@@ -32,6 +32,26 @@ class ToolRegistry:
         self.capability_policy = capability_policy or CapabilityPolicy((Capability('desktop', frozenset({'observe'})),))
         self._tools: dict[str, ToolSpec] = {}
 
+    def grant_capability(self, capability: Capability) -> None:
+        if self.policy.emergency_stopped or self.policy.read_only:
+            raise RuntimeError("Cannot grant capabilities while a safety mode is active.")
+        self.capability_policy.grant(capability)
+        self.audit_log.record_event("capability_granted", {
+            "resource": capability.resource, "actions": sorted(capability.actions),
+            "scope": capability.scope,
+        })
+
+    def revoke_capability(self, capability: Capability) -> None:
+        self.capability_policy.revoke(capability)
+        self.audit_log.record_event("capability_revoked", {
+            "resource": capability.resource, "actions": sorted(capability.actions),
+            "scope": capability.scope,
+        })
+
+    def revoke_all_capabilities(self) -> None:
+        self.capability_policy.revoke_all()
+        self.audit_log.record_event("all_capabilities_revoked")
+
     def register(self, spec: ToolSpec) -> None:
         if not spec.name or spec.name in self._tools:
             raise ValueError(f"Invalid or duplicate tool name: {spec.name}")
