@@ -25,3 +25,12 @@ def test_approval_callback_is_per_invocation(tmp_path):
     registry.register(ToolSpec("desktop_type_text", "Type", RiskLevel.SENSITIVE, lambda text: len(text)))
     assert registry.execute(ToolCall("desktop_type_text", {"text": "hello"})) == 5
     assert approvals == ["desktop_type_text"]
+
+
+def test_sensitive_actions_ignore_session_grants(tmp_path):
+    policy = PermissionPolicy()
+    policy.grant_for_session("desktop_click_control")
+    registry = ToolRegistry(policy, AuditLog(tmp_path / "audit-grant.db"))
+    registry.register(ToolSpec("desktop_click_control", "Click", RiskLevel.SENSITIVE, lambda: "clicked"))
+    with pytest.raises(PermissionError):
+        registry.execute(ToolCall("desktop_click_control"))
