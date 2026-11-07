@@ -151,12 +151,14 @@ class ToolRegistry:
             approval_reasons.append(call.reason or policy.explanation)
 
         approved_once = False
+        capability_approved_once = False
         if approval_reasons:
             reason = " | ".join(approval_reasons)
             approved_once = bool(
                 self.approval_callback
                 and self.approval_callback(spec.name, reason, arguments)
             )
+            capability_approved_once = bool(missing_capabilities and approved_once)
             if not approved_once:
                 self.audit_log.record(
                     tool_name=spec.name, application=call.application, risk=spec.risk.name,
@@ -173,7 +175,7 @@ class ToolRegistry:
         if final_policy.decision is Decision.DENY:
             detail = final_policy.explanation
             outcome = "blocked"
-        elif final_missing and not approved_once:
+        elif final_missing and not capability_approved_once:
             detail = "Required capability was revoked before execution."
             outcome = "blocked"
         elif final_policy.decision is Decision.APPROVAL_REQUIRED and not approved_once:
