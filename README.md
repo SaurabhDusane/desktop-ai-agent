@@ -162,3 +162,22 @@ and returns explicit error results rather than implying success. A tool-call
 limit stops further autonomous execution. This is the first secure execution
 milestone, not a claim that the later scheduler, cancellation, capability
 scopes, or dashboard are complete.
+
+
+## Capability-based permissions
+
+Tool risk and capability are separate checks. Risk answers "how consequential is
+this action?"; a capability answers "which resource and operation may this tool
+access?". Each tool can declare required resource/action/scope tuples. The
+registry checks those requirements before the handler and checks again directly
+before execution. Missing capabilities require explicit approval for that
+invocation; that approval is not silently saved as a session grant.
+
+The capability policy supports explicit in-memory grants, scoped matching,
+wildcards, and revocation. Its default baseline is limited to desktop
+observation. Application launching and desktop interaction require additional
+authorization. Grants are not persisted across restarts. Existing risk controls
+remain in force, including read-only mode, emergency stop, and fresh approval
+for sensitive actions. Filesystem path containment remains enforced separately
+by SafePathPolicy; future file tools must combine path validation with a
+filesystem capability and must never trust a model-provided path.
