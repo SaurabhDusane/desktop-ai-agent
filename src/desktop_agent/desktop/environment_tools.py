@@ -40,7 +40,10 @@ def register_environment_tools(
     ))
     registry.register(ToolSpec(
         name="environment_query",
-        description="Find nodes in the current session's environment graph by metadata text and optional kind.",
+        description=(
+            "Find nodes in the current session's environment graph by metadata text "
+            "and optional kind."
+        ),
         risk=RiskLevel.READ_ONLY,
         handler=service.graph.query,
         input_schema={
