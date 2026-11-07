@@ -29,6 +29,14 @@ class SessionContext:
         self._summary = ""
         self._lock = threading.RLock()
 
+    def set_context_budget(self, max_context_chars: int) -> None:
+        """Apply a runtime resource budget without exceeding the configured safe ceiling."""
+        if max_context_chars < 1:
+            raise ValueError("Context budget must be positive")
+        with self._lock:
+            self.max_context_chars = min(24000, max_context_chars)
+            self.summary_max_chars = min(self.summary_max_chars, max(1, self.max_context_chars // 2))
+
     @property
     def summary(self) -> str:
         with self._lock:
