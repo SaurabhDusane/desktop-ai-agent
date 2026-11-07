@@ -65,3 +65,27 @@ def test_malformed_window_records_are_ignored():
     result = graph.replace_windows([{"title": "missing pid"}, None])
     assert result["node_count"] == 1
     assert result["edge_count"] == 0
+
+
+def test_environment_tools_are_registered_through_central_registry(tmp_path):
+    from desktop_agent.agent.audit import AuditLog
+    from desktop_agent.agent.models import ToolCall
+    from desktop_agent.agent.policy import PermissionPolicy
+    from desktop_agent.agent.registry import ToolRegistry
+    from desktop_agent.desktop.environment_tools import register_environment_tools
+
+    graph = EnvironmentStateGraph()
+    service = EnvironmentStateService(graph, lambda: windows())
+    registry = ToolRegistry(PermissionPolicy(), AuditLog(tmp_path / "audit.db"))
+    register_environment_tools(registry, service)
+
+    refreshed = registry.execute(ToolCall("environment_refresh_desktop"))
+    assert refreshed["node_count"] == 6
+    snapshot = registry.execute(ToolCall(
+        "environment_snapshot", {"kind": "window", "limit": 10}
+    ))
+    assert len(snapshot["nodes"]) == 3
+    query = registry.execute(ToolCall(
+        "environment_query", {"text": "editor", "kind": "window"}
+    ))
+    assert len(query["matches"]) == 1
