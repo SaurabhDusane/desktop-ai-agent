@@ -1,7 +1,7 @@
 from desktop_agent.agent.model_router import (
     ModelBenchmarkStore, ModelProfile, ModelRouter, profile_from_ollama,
 )
-from desktop_agent.agent.resources import InferenceBudget, ResourceBudgetManager, ResourceSnapshot
+from desktop_agent.agent.resources import ResourceBudgetManager, ResourceSnapshot
 
 
 def test_router_prefers_measured_quality_and_speed():
