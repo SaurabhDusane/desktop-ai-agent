@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from desktop_agent.config import Settings
 from desktop_agent.ollama import OllamaClient
 from desktop_agent.agent.audit import AuditLog
+from desktop_agent.agent.memory import RepetitionMemory, SessionContext
 from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
 from desktop_agent.ui.approval import ApprovalBroker
@@ -41,6 +42,8 @@ class MainWindow(QMainWindow):
         self.approval_broker = ApprovalBroker(self)
         audit_path = Path.home() / ".local-desktop-agent" / "audit.sqlite3"
         self.audit_log = AuditLog(audit_path)
+        self.session_context = SessionContext()
+        self.repetition_memory = RepetitionMemory(audit_path.parent / "memory.sqlite3")
         self.permission_policy = PermissionPolicy()
         self.tool_registry = ToolRegistry(
             self.permission_policy, self.audit_log, self.approval_broker.approve
@@ -166,12 +169,21 @@ class MainWindow(QMainWindow):
             self._show_error("No model selected. Install a model in Ollama, then refresh.")
             return
         self.audit_log.record_event("user_message", {"model": model, "content": prompt})
+        self.session_context.add("user", prompt)
         self.input.clear()
         self.send_button.setEnabled(False)
         self.chat_view.append(f"<b>You:</b> {self._escape(prompt)}")
-        messages = [*self.history, {"role": "user", "content": prompt}]
+        # Context compaction runs in the worker thread and uses local Ollama only.
+        messages = None
+
+        def request_answer() -> str:
+            context_messages = self.session_context.build(
+                lambda transcript: self.client.summarize(model, transcript)
+            )
+            return self.client.chat(model, context_messages)
 
         def received(answer: str) -> None:
+            self.session_context.add("assistant", answer)
             self.audit_log.record_event("assistant_response", {"model": model, "content": answer})
             self.history.extend([
                 {"role": "user", "content": prompt},
@@ -180,7 +192,7 @@ class MainWindow(QMainWindow):
             self.chat_view.append(f"<b>Assistant:</b> {self._escape(answer)}")
             self.send_button.setEnabled(True)
 
-        self._background(lambda: self.client.chat(model, messages), received)
+        self._background(request_answer, received)
 
     def _show_error(self, message: str) -> None:
         self.audit_log.record_event("application_error", {"message": message})
