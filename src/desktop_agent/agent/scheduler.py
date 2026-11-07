@@ -112,9 +112,10 @@ class TaskScheduler:
             self._active_plans += 1
         cancel_event = threading.Event()
         result_future: Future[PlanResult] = Future()
+        deadline_at = time.monotonic() + deadline_seconds
         thread = threading.Thread(
             target=self._coordinate,
-            args=(plan, plan_id, deadline_seconds, cancel_event, result_future),
+            args=(plan, plan_id, deadline_at, cancel_event, result_future),
             name=f"agent-plan-{plan_id[:24]}",
             daemon=True,
         )
@@ -160,9 +161,8 @@ class TaskScheduler:
             with self._lock:
                 self._active_steps -= 1
 
-    def _coordinate(self, plan: AgentPlan, plan_id: str, deadline_seconds: float,
+    def _coordinate(self, plan: AgentPlan, plan_id: str, deadline: float,
                     cancel: threading.Event, output: Future[PlanResult]) -> None:
-        deadline = time.monotonic() + deadline_seconds
         steps = {step.step_id: step for step in plan.steps}
         pending = set(steps)
         running: dict[Future, str] = {}
