@@ -110,3 +110,14 @@ def test_capability_revoked_during_risk_approval_blocks_execution(tmp_path):
     with pytest.raises(PermissionError, match="revoked"):
         registry.execute(ToolCall("click"))
     assert executed == []
+
+
+
+def test_revocation_overrides_baseline_and_explicit_grant_restores_it():
+    capability = Capability("desktop", frozenset({"observe"}))
+    policy = CapabilityPolicy((capability,))
+    assert policy.missing((capability,)) == ()
+    policy.revoke(capability)
+    assert policy.missing((capability,)) == (capability,)
+    policy.grant(capability)
+    assert policy.missing((capability,)) == ()
