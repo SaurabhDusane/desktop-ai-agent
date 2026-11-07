@@ -19,6 +19,8 @@ from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
 from desktop_agent.agent.runtime import AgentRuntime
 from desktop_agent.agent.scheduler import TaskScheduler
+from desktop_agent.agent.model_router import ModelRouter, profile_from_ollama
+from desktop_agent.agent.resources import ResourceMonitor, ResourceBudgetManager
 from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.tools import register_desktop_tools
 from desktop_agent.ui.approval import ApprovalBroker
@@ -56,6 +58,10 @@ class MainWindow(QMainWindow):
         )
         register_desktop_tools(self.tool_registry)
         self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
+        self.model_router = ModelRouter()
+        self.resource_monitor = ResourceMonitor()
+        self.resource_budgets = ResourceBudgetManager()
+        self.installed_models: list[str] = []
         self.task_scheduler = TaskScheduler(
             self.tool_registry,
             max_workers=3,
@@ -172,22 +178,67 @@ class MainWindow(QMainWindow):
         self.status.setText("Checking local Ollama models…")
         self.refresh_button.setEnabled(False)
 
-        def loaded(models: list[str]) -> None:
+        def load_catalog():
+            models = self.client.list_models()
+            running = self.client.running_models()
+            profiles = []
+            for name in models:
+                try:
+                    profiles.append(profile_from_ollama(name, self.client.model_details(name), running))
+                except Exception:
+                    # Keep the installed model selectable even when metadata is unavailable.
+                    from desktop_agent.agent.model_router import ModelProfile
+                    profiles.append(ModelProfile(name))
+            return models, profiles, self.resource_monitor.snapshot()
+
+        def loaded(catalog) -> None:
+            models, profiles, snapshot = catalog
+            self.installed_models = models
+            self.model_router.update_profiles(profiles)
             self.model_box.clear()
+            self.model_box.addItem("Auto (local routing)")
             self.model_box.addItems(models)
+            budget = self.resource_budgets.budget(snapshot)
             selected = self.model_box.currentText()
-            self.audit_log.record_event("model_list_refreshed", {"count": len(models), "selected_model": selected})
-            self.status.setText(
-                f"{len(models)} model(s) available." if models
-                else "Ollama is running, but no models are installed. Pull a model with Ollama."
-            )
+            self.audit_log.record_event("model_list_refreshed", {
+                "count": len(models), "selected_model": selected,
+                "available_ram_bytes": snapshot.available_ram_bytes,
+                "free_vram_bytes": snapshot.free_vram_bytes,
+                "gpu_source": snapshot.gpu_source,
+            })
+            if models:
+                decision = self.model_router.choose(models, available_vram_bytes=snapshot.free_vram_bytes)
+                hardware = snapshot.gpu_name or "GPU details unavailable"
+                self.status.setText(
+                    f"{len(models)} local model(s). Recommended: {decision.model} — {decision.reason}. "
+                    f"{hardware}. Context budget: {budget.max_context_tokens} tokens."
+                )
+            else:
+                self.status.setText("Ollama is running, but no models are installed. Pull a model with Ollama.")
             self.refresh_button.setEnabled(True)
 
-        self._background(self.client.list_models, loaded)
+        self._background(load_catalog, loaded)
 
     def send_message(self) -> None:
         prompt = self.input.text().strip()
         model = self.model_box.currentText()
+        if model == "Auto (local routing)":
+            if not self.installed_models:
+                self._show_error("No local models are installed. Refresh the model list first.")
+                return
+            snapshot = self.resource_monitor.snapshot()
+            budget = self.resource_budgets.budget(snapshot)
+            decision = self.model_router.choose(
+                self.installed_models, task="tools" if self.tool_registry.model_schemas() else "general",
+                available_vram_bytes=snapshot.free_vram_bytes,
+            )
+            model = decision.model
+            self.audit_log.record_event("model_routed", {
+                "model": model, "reason": decision.reason, "score": decision.score,
+                "measured": decision.measured, "context_budget": budget.max_context_tokens,
+                "warnings": list(budget.warnings),
+            })
+            self.status.setText(f"Auto selected {model}. {decision.reason}")
         if not prompt:
             return
         if not model:
