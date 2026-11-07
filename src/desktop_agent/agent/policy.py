@@ -29,6 +29,9 @@ class PermissionPolicy:
     def evaluate(self, tool_name: str, risk: RiskLevel) -> PolicyDecision:
         if risk is RiskLevel.RESTRICTED:
             return PolicyDecision(Decision.DENY, "This action is blocked by the application safety policy.")
+        # Sensitive actions always require a fresh, per-invocation approval.
+        if risk is RiskLevel.SENSITIVE:
+            return PolicyDecision(Decision.APPROVAL_REQUIRED, "This sensitive action requires explicit approval each time.")
         if tool_name in self._session_grants:
             return PolicyDecision(Decision.ALLOW, "Approved for this session by the user.")
         if risk <= self.max_auto_risk:
