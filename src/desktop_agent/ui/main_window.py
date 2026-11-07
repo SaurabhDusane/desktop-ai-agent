@@ -94,7 +94,14 @@ class MainWindow(QMainWindow):
                 self.desktop_tools_error = str(exc)
                 self.audit_log.record_event("desktop_tools_unavailable", {"error": str(exc)})
         self.environment_service = EnvironmentStateService(self.environment_graph, window_observer)
-        self.task_dashboard = TaskDashboard(self)\n        self.task_dock = QDockWidget("Task Dashboard", self)\n        self.task_dock.setObjectName("taskDashboardDock")\n        self.task_dock.setWidget(self.task_dashboard)\n        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.task_dock)\n        self.task_event_bridge.event_received.connect(self._on_task_event)\n        self.task_event_bridge.approval_received.connect(self.task_dashboard.set_approval)\n        self.approval_broker.approval_state.connect(self.task_event_bridge.approval_received.emit)
+        self.task_dashboard = TaskDashboard(self)
+        self.task_dock = QDockWidget("Task Dashboard", self)
+        self.task_dock.setObjectName("taskDashboardDock")
+        self.task_dock.setWidget(self.task_dashboard)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.task_dock)
+        self.task_event_bridge.event_received.connect(self._on_task_event)
+        self.task_event_bridge.approval_received.connect(self.task_dashboard.set_approval)
+        self.approval_broker.approval_state.connect(self.task_event_bridge.approval_received.emit)
         register_environment_tools(self.tool_registry, self.environment_service)
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
@@ -144,7 +151,13 @@ class MainWindow(QMainWindow):
         self.refresh_models()
 
     def _on_task_event(self, event) -> None:
-        self.audit_log.record_event("task_state", {\n            "plan_id": event.plan_id, "step_id": event.step_id,\n            "state": event.state.value, "timestamp": event.timestamp,\n            "duration_seconds": event.duration_seconds, "detail": event.detail,\n        })\n        self.task_dashboard.add_event(event)\n        self.task_dashboard.update_metrics(self.task_scheduler.metrics())
+        self.audit_log.record_event("task_state", {
+            "plan_id": event.plan_id, "step_id": event.step_id,
+            "state": event.state.value, "timestamp": event.timestamp,
+            "duration_seconds": event.duration_seconds, "detail": event.detail,
+        })
+        self.task_dashboard.add_event(event)
+        self.task_dashboard.update_metrics(self.task_scheduler.metrics())
 
     def _toggle_read_only(self) -> None:
         enabled = not self.permission_policy.read_only
