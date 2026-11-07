@@ -84,6 +84,37 @@ class ModelRouter:
         return RoutingDecision(profile.name, reason, score, measured)
 
 
+
+def profile_from_ollama(name: str, details: dict, running: Iterable[dict] = ()) -> ModelProfile:
+    """Normalize Ollama /api/show and /api/ps metadata into a conservative profile."""
+    capabilities_raw = details.get("capabilities", [])
+    capabilities = {str(value).lower() for value in capabilities_raw} if isinstance(capabilities_raw, list) else set()
+    mapped = {"chat"}
+    if "tools" in capabilities:
+        mapped.add("tools")
+    if "vision" in capabilities:
+        mapped.add("vision")
+    if "completion" in capabilities:
+        mapped.add("code")
+    context = None
+    model_info = details.get("model_info", {})
+    if isinstance(model_info, dict):
+        values = [value for key, value in model_info.items()
+                  if str(key).endswith("context_length") and isinstance(value, int)]
+        context = max(values) if values else None
+    details_block = details.get("details", {})
+    parameter_size = str(details_block.get("parameter_size", "")) if isinstance(details_block, dict) else ""
+    vram = None
+    for item in running:
+        if item.get("name") == name or str(item.get("name", "")).split(":")[0] == name.split(":")[0]:
+            value = item.get("size_vram")
+            if isinstance(value, int) and value >= 0:
+                vram = value
+                break
+    return ModelProfile(name, parameter_size, context, frozenset(mapped),
+                        estimated_vram_bytes=vram, source="ollama_metadata")
+
+
 def benchmark_model(model: str, invoke: Callable[[str], str], prompt: str) -> tuple[float, str]:
     """Measure one local inference request; caller evaluates answer quality separately."""
     started = time.perf_counter()
