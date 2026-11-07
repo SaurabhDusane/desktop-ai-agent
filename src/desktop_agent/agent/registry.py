@@ -1,6 +1,7 @@
-"""Tool registry and single enforcement point for permissions and auditing."""
+"""Tool registry: schema validation, policy enforcement, approval, and audit."""
 
 from dataclasses import dataclass
+import inspect
 from typing import Any, Callable
 
 from desktop_agent.agent.audit import AuditLog
@@ -14,9 +15,12 @@ class ToolSpec:
     description: str
     risk: RiskLevel
     handler: Callable[..., Any]
+    input_schema: dict[str, Any] | None = None
 
 
 class ToolRegistry:
+    """The only supported path from model-proposed calls to side effects."""
+
     def __init__(self, policy: PermissionPolicy, audit_log: AuditLog,
                  approval_callback: ApprovalCallback | None = None) -> None:
         self.policy = policy
@@ -25,8 +29,8 @@ class ToolRegistry:
         self._tools: dict[str, ToolSpec] = {}
 
     def register(self, spec: ToolSpec) -> None:
-        if spec.name in self._tools:
-            raise ValueError(f"Tool already registered: {spec.name}")
+        if not spec.name or spec.name in self._tools:
+            raise ValueError(f"Invalid or duplicate tool name: {spec.name}")
         self._tools[spec.name] = spec
 
     def descriptions(self) -> list[dict[str, str]]:
@@ -35,44 +39,112 @@ class ToolRegistry:
             for spec in self._tools.values()
         ]
 
+    def model_schemas(self) -> list[dict[str, Any]]:
+        """Return Ollama/OpenAI-compatible function schemas for registered tools only."""
+        return [{
+            "type": "function",
+            "function": {
+                "name": spec.name,
+                "description": spec.description,
+                "parameters": spec.input_schema or self._inferred_schema(spec.handler),
+            },
+        } for spec in self._tools.values()]
+
+    @staticmethod
+    def _inferred_schema(handler: Callable[..., Any]) -> dict[str, Any]:
+        signature = inspect.signature(handler)
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for name, parameter in signature.parameters.items():
+            if parameter.kind in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD):
+                raise ValueError("Tool handlers may not use variadic arguments")
+            annotation = parameter.annotation
+            kind = "string" if annotation is str else "integer" if annotation is int else (
+                "boolean" if annotation is bool else "number" if annotation is float else "string"
+            )
+            properties[name] = {"type": kind}
+            if parameter.default is inspect.Parameter.empty:
+                required.append(name)
+        return {"type": "object", "properties": properties, "required": required, "additionalProperties": False}
+
+    def _validate_arguments(self, spec: ToolSpec, arguments: Any) -> dict[str, Any]:
+        if not isinstance(arguments, dict):
+            raise ValueError("Tool arguments must be a JSON object.")
+        schema = spec.input_schema or self._inferred_schema(spec.handler)
+        if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
+            raise ValueError(f"Tool {spec.name} must declare a closed object schema.")
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        unknown = set(arguments) - set(properties)
+        missing = set(required) - set(arguments)
+        if unknown or missing:
+            raise ValueError(f"Invalid arguments for {spec.name}; unknown={sorted(unknown)}, missing={sorted(missing)}")
+        for key, value in arguments.items():
+            rule = properties[key]
+            expected = rule.get("type")
+            valid = (
+                expected == "string" and isinstance(value, str)
+                or expected == "integer" and isinstance(value, int) and not isinstance(value, bool)
+                or expected == "number" and isinstance(value, (int, float)) and not isinstance(value, bool)
+                or expected == "boolean" and isinstance(value, bool)
+                or expected == "array" and isinstance(value, list)
+                or expected == "object" and isinstance(value, dict)
+            )
+            if not valid:
+                raise ValueError(f"Argument {key!r} for {spec.name} must be {expected}.")
+            if isinstance(value, str) and len(value) > int(rule.get("maxLength", 10000)):
+                raise ValueError(f"Argument {key!r} exceeds its maximum length.")
+            if "enum" in rule and value not in rule["enum"]:
+                raise ValueError(f"Argument {key!r} is not an allowed value.")
+        return arguments
+
     def execute(self, call: ToolCall) -> Any:
         spec = self._tools.get(call.tool_name)
         if spec is None:
             raise KeyError(f"Unknown tool: {call.tool_name}")
+        arguments = self._validate_arguments(spec, call.arguments)
         policy = self.policy.evaluate(spec.name, spec.risk)
         decision = policy.decision
         if decision is Decision.APPROVAL_REQUIRED:
             approved = bool(
                 self.approval_callback
-                and self.approval_callback(spec.name, call.reason or spec.description, call.arguments)
+                and self.approval_callback(spec.name, call.reason or spec.description, arguments)
             )
             if approved:
-                # Safety modes may change while the confirmation dialog is open.
-                # Re-check centrally after approval and immediately before execution.
                 policy = self.policy.evaluate(spec.name, spec.risk)
-                decision = (
-                    Decision.DENY if policy.decision is Decision.DENY else Decision.ALLOW
-                )
+                decision = Decision.DENY if policy.decision is Decision.DENY else Decision.ALLOW
             else:
                 decision = Decision.DENY
         if decision is not Decision.ALLOW:
             outcome = "blocked" if policy.decision is Decision.DENY else "denied"
             self.audit_log.record(
                 tool_name=spec.name, application=call.application, risk=spec.risk.name,
-                decision=decision.value, outcome=outcome, arguments=call.arguments,
+                decision=decision.value, outcome=outcome, arguments=arguments,
                 detail=policy.explanation,
             )
             raise PermissionError(policy.explanation if outcome == "blocked" else "User did not approve this action.")
+        # Validate and re-check policy immediately before invoking the side effect.
+        arguments = self._validate_arguments(spec, arguments)
+        final_policy = self.policy.evaluate(spec.name, spec.risk)
+        if final_policy.decision is Decision.DENY or (
+            final_policy.decision is Decision.APPROVAL_REQUIRED and decision is not Decision.ALLOW
+        ):
+            self.audit_log.record(
+                tool_name=spec.name, application=call.application, risk=spec.risk.name,
+                decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
+                detail=final_policy.explanation,
+            )
+            raise PermissionError(final_policy.explanation)
         try:
-            result = spec.handler(**call.arguments)
+            result = spec.handler(**arguments)
         except Exception as exc:
             self.audit_log.record(
                 tool_name=spec.name, application=call.application, risk=spec.risk.name,
-                decision=decision.value, outcome="error", arguments=call.arguments, detail=str(exc),
+                decision=decision.value, outcome="error", arguments=arguments, detail=str(exc),
             )
             raise
         self.audit_log.record(
             tool_name=spec.name, application=call.application, risk=spec.risk.name,
-            decision=decision.value, outcome="success", arguments=call.arguments,
+            decision=decision.value, outcome="success", arguments=arguments,
         )
         return result
