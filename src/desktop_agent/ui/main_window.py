@@ -19,7 +19,7 @@ from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
 from desktop_agent.agent.runtime import AgentRuntime
 from desktop_agent.agent.scheduler import TaskScheduler
-from desktop_agent.agent.model_router import ModelRouter, profile_from_ollama
+from desktop_agent.agent.model_router import ModelRouter, ModelBenchmarkStore, profile_from_ollama
 from desktop_agent.agent.resources import ResourceMonitor, ResourceBudgetManager
 from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.tools import register_desktop_tools
@@ -58,7 +58,7 @@ class MainWindow(QMainWindow):
         )
         register_desktop_tools(self.tool_registry)
         self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
-        self.model_router = ModelRouter()
+        self.model_router = ModelRouter(ModelBenchmarkStore(audit_path.parent / "model-benchmarks.sqlite3"))
         self.resource_monitor = ResourceMonitor()
         self.resource_budgets = ResourceBudgetManager()
         self.installed_models: list[str] = []
