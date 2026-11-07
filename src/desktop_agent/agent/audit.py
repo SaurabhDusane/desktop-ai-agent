@@ -71,14 +71,23 @@ class AuditLog:
         self, *, tool_name: str, application: str | None, risk: str,
         decision: str, outcome: str, arguments: dict, detail: str = "",
     ) -> None:
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """INSERT INTO tool_events
-                (created_at, tool_name, application, risk, decision, outcome, arguments_json, detail)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (datetime.now(timezone.utc).isoformat(), tool_name, application, risk,
-                 decision, outcome, json.dumps(redact(arguments), default=str), detail[:2000]),
-            )
+        timestamp = datetime.now(timezone.utc).isoformat()
+        safe_args, safe_detail = redact(arguments), redact(detail[:2000])
+        payload = {"timestamp": timestamp, "event": "tool_action", "tool": tool_name,
+                   "application": application, "risk": risk, "decision": decision,
+                   "outcome": outcome, "arguments": safe_args, "detail": safe_detail}
+        with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO tool_events
+                    (created_at, tool_name, application, risk, decision, outcome, arguments_json, detail)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (timestamp, tool_name, application, risk, decision, outcome,
+                     json.dumps(safe_args, default=str), safe_detail),
+                )
+            with self.log_path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, ensure_ascii=False, default=str) + "\\n")
+                stream.flush()
 
     def recent_events(self, limit: int = 100) -> list[dict]:
         with self._connect() as connection:
