@@ -99,3 +99,33 @@ does not enable model-directed desktop control by itself.
 The approval dialog is not a substitute for reviewing the requested action.
 In particular, inspect text-entry arguments before approving them because they
 may be submitted by the target application.
+
+
+## Security and safety controls
+
+The application now has centrally enforced safety modes:
+
+- **Emergency stop:** blocks all future tool executions, including read-only tools, and revokes session grants. The UI disables chat input and safety controls for the remainder of that application session. Restarting the app resets this in-memory state.
+- **Read-only mode:** permits read-only tools and denies every tool classified above `READ_ONLY`. Enabling it revokes session grants.
+- **Fresh approvals:** sensitive operations continue to require an individual approval for every invocation.
+- **Filesystem boundary helper:** `SafePathPolicy` resolves candidate paths and checks them against configured allowed and blocked roots. Future file tools must call this helper before every read or write; it does not grant filesystem access by itself.
+- **Audit records:** application startup/shutdown, chat prompts and responses, model-list refreshes, errors, safety-mode changes, and tool decisions are recorded locally.
+
+### Local audit files
+
+The application stores its audit database and JSONL activity stream under:
+
+- `~/.local-desktop-agent/audit.sqlite3`
+- `~/.local-desktop-agent/audit.jsonl`
+
+The JSONL stream is hash-chained. Each record includes the previous record's hash and its own digest; startup verifies the existing chain and refuses to append if verification fails. This makes accidental edits and simple tampering detectable, but is **not** tamper-proof against an attacker who can replace the entire log and recompute the chain. Keep the directory protected with your Windows account permissions and back it up separately.
+
+The audit log includes chat content so it can contain sensitive personal information. Basic secret-pattern redaction is applied, but it cannot identify every secret. Treat both files as private data. Do not share them without reviewing their contents.
+
+### Current limitations
+
+- Emergency stop blocks new tool invocations; it cannot forcibly interrupt an operation that has already started inside a third-party application.
+- Filesystem restrictions are a reusable boundary helper, not yet wired to a general file-management tool (the agent currently has no general file-management tool).
+- Read-only mode and emergency stop are in-memory controls, not persistent policy configuration.
+- Prompt-injection isolation, Windows ACL hardening, protected audit export, backups/rollback, and a dedicated activity-log viewer remain future work.
+- The model chat loop still does not invoke desktop tools.
