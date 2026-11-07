@@ -165,8 +165,6 @@ class ToolRegistry:
                 decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
                 detail=final_policy.explanation,
             )
-            for capability in temporary_capabilities:
-                self.capability_policy.revoke(capability)
             raise PermissionError(final_policy.explanation)
         try:
             result = spec.handler(**arguments)
