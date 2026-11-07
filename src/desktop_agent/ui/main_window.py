@@ -10,6 +10,10 @@ from PySide6.QtWidgets import (
 
 from desktop_agent.config import Settings
 from desktop_agent.ollama import OllamaClient
+from desktop_agent.agent.audit import AuditLog
+from desktop_agent.agent.policy import PermissionPolicy
+from desktop_agent.agent.registry import ToolRegistry
+from desktop_agent.ui.approval import ApprovalBroker
 
 
 class Worker(QObject):
@@ -31,6 +35,17 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         self.client = OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds)
+        # The approval callback marshals confirmations onto the Qt main thread.
+        self.approval_broker = ApprovalBroker(self)
+        audit_path = Settings.audit_database_path()
+        self.tool_registry = ToolRegistry(
+            PermissionPolicy(), AuditLog(audit_path), self.approval_broker.approve
+        )
+        self.desktop_tools_available = False
+        if sys.platform == "win32":
+            from desktop_agent.desktop.tools import register_uia_tools
+            register_uia_tools(self.tool_registry)
+            self.desktop_tools_available = True
         self.history: list[dict[str, str]] = []
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
