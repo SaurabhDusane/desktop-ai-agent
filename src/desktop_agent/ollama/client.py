@@ -1,4 +1,6 @@
-"""Typed client for the Ollama HTTP API."""
+"""Typed client for the local Ollama chat and tool-calling API."""
+
+from typing import Any
 
 import httpx
 
@@ -22,26 +24,40 @@ class OllamaClient:
         return sorted(model["name"] for model in payload.get("models", []) if model.get("name"))
 
     def summarize(self, model: str, transcript: str) -> str:
-        """Summarize session context using the configured local Ollama instance."""
         return self.chat(model, [
             {"role": "system", "content": "You are a concise conversation-context compressor. Return only factual reusable context."},
             {"role": "user", "content": transcript},
         ])
 
-    def chat(self, model: str, messages: list[dict[str, str]]) -> str:
+    def chat(self, model: str, messages: list[dict[str, Any]]) -> str:
+        result = self.chat_message(model, messages)
+        content = result.get("content")
+        if not isinstance(content, str):
+            raise OllamaError("Ollama returned no message content.")
+        return content
+
+    def chat_message(
+        self, model: str, messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Return the assistant message, including any native Ollama tool_calls."""
         if not model.strip():
             raise OllamaError("Select an Ollama model before sending a message.")
+        body: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        if tools:
+            body["tools"] = tools
         try:
             response = httpx.post(
-                f"{self._base_url}/api/chat",
-                json={"model": model, "messages": messages, "stream": False},
-                timeout=self._timeout,
+                f"{self._base_url}/api/chat", json=body, timeout=self._timeout,
             )
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise OllamaError(f"Ollama chat request failed: {exc}") from exc
-        content = payload.get("message", {}).get("content")
-        if not isinstance(content, str):
-            raise OllamaError("Ollama returned no message content.")
-        return content
+        message = payload.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("content", ""), str):
+            raise OllamaError("Ollama returned an invalid assistant message.")
+        calls = message.get("tool_calls", [])
+        if not isinstance(calls, list):
+            raise OllamaError("Ollama returned malformed tool calls.")
+        return message
