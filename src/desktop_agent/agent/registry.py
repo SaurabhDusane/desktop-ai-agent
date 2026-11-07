@@ -172,7 +172,7 @@ class ToolRegistry:
                     decision=Decision.DENY.value, outcome="denied", arguments=arguments,
                     detail="User did not approve the complete action and capability request.",
                 )
-                raise PermissionError("User did not approve this action.")
+                raise PermissionError("User did not approve the requested capability and action.")
 
         # Revalidate inputs and re-check current safety state immediately before
         # invoking the handler. A one-shot capability approval is not persisted.
