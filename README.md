@@ -137,10 +137,10 @@ The chat UI uses a bounded in-memory `SessionContext` rather than sending the en
 
 - Recent turns remain in RAM; when the configured character budget is exceeded, older turns are compressed into a short summary using the selected local Ollama model.
 - Only the summary and recent messages are sent with the next request. No cloud summarizer or external memory service is used.
-- Raw session conversation is not written to a memory database. The existing security audit log remains separate and may still contain chat content.
-- A separate local `RepetitionMemory` component is provided for future tool workflows. It promotes a compact reusable description only after at least three successful observations of the same normalized action signature. It stores no transcript or raw action arguments.
+- Chat prompts and responses are not written to the security audit log; only message metadata such as model and character count is retained.
+- A separate local `RepetitionMemory` component is provided for future tool workflows. The first two successful observations remain in RAM only; after at least three successful observations of the same normalized action signature in one app session, a compact reusable description is persisted. It stores no transcript or raw action arguments. Pending observations disappear when the app closes.
 - Repetition is not permission: learned patterns cannot change tool risk classifications, approval requirements, or policy decisions.
 
-The memory database is `~/.local-desktop-agent/memory.sqlite3`. The repetition-learning interface is not yet connected to tool execution because model-directed tool invocation is not yet implemented. It will be connected at that boundary when action workflows are introduced.
+The memory database is `~/.local-desktop-agent/memory.sqlite3` and contains promoted patterns only. The repetition-learning interface is not yet connected to tool execution because model-directed tool invocation is not yet implemented. It will be connected at that boundary when action workflows are introduced.
 
-Context size is currently a conservative character-based approximation, not an exact model tokenizer budget. The context summary is session-only and is discarded when the app closes. A later enhancement can add explicit user controls to inspect, pin, or delete promoted patterns.
+Context size is currently a character-based bound, not an exact model tokenizer budget. The newest request is retained (and may be truncated if it alone exceeds the configured budget). The context summary is session-only and is discarded when the app closes. A later enhancement can add explicit user controls to inspect, pin, or delete promoted patterns.
