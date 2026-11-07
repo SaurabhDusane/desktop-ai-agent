@@ -67,3 +67,24 @@ def test_missing_capability_denial_blocks_handler(tmp_path):
     with pytest.raises(PermissionError, match="capability"):
         registry.execute(ToolCall("launch"))
     assert executed == []
+
+
+def test_missing_capability_and_sensitive_risk_share_one_approval(tmp_path):
+    approvals = []
+    capability = Capability("desktop", frozenset({"interact"}), "window")
+    registry = ToolRegistry(
+        PermissionPolicy(), AuditLog(tmp_path / "combined.db"),
+        lambda name, reason, args: approvals.append((name, reason)) or True,
+        capability_policy=CapabilityPolicy(),
+    )
+    registry.register(ToolSpec(
+        "click", "Click a control", RiskLevel.SENSITIVE,
+        lambda: "clicked",
+        {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+        (capability,),
+    ))
+    assert registry.execute(ToolCall("click")) == "clicked"
+    assert len(approvals) == 1
+    assert "Missing capabilities" in approvals[0][1]
+    assert "sensitive action" in approvals[0][1]
+    assert registry.capability_policy.missing((capability,)) == (capability,)
