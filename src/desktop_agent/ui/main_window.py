@@ -81,9 +81,10 @@ class MainWindow(QMainWindow):
             try:
                 from desktop_agent.desktop.tools import register_uia_tools
                 register_uia_tools(self.tool_registry)
-                window_observer = lambda: self.tool_registry.execute(
-                    ToolCall("windows_desktop_list_windows")
-                )
+                def window_observer():
+                    return self.tool_registry.execute(
+                        ToolCall("windows_desktop_list_windows")
+                    )
                 self.desktop_tools_available = True
                 self.audit_log.record_event("desktop_tools_registered")
             except Exception as exc:
