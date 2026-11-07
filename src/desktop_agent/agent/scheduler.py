@@ -113,6 +113,24 @@ class TaskScheduler:
         cancel_event = threading.Event()
         result_future: Future[PlanResult] = Future()
         deadline_at = time.monotonic() + deadline_seconds
+        # A deadline may expire while the caller is still submitting the plan.
+        # In that case, do not dispatch any step to a worker thread.
+        if time.monotonic() >= deadline_at:
+            result_future.set_result(PlanResult(
+                plan.goal,
+                "timed_out",
+                tuple(
+                    StepResult(step.step_id, "timed_out",
+                               message="Plan deadline expired before execution began.")
+                    for step in plan.steps
+                ),
+            ))
+            with self._lock:
+                self._active_plans -= 1
+                self._failed += 1
+            self._plan_slots.release()
+            return PlanHandle(plan_id, result_future, cancel_event)
+
         thread = threading.Thread(
             target=self._coordinate,
             args=(plan, plan_id, deadline_at, cancel_event, result_future),
