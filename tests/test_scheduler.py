@@ -58,6 +58,7 @@ def test_dependency_failure_skips_downstream_steps(tmp_path):
 
 def test_state_changing_steps_are_serialized(tmp_path):
     registry = make_registry(tmp_path)
+    registry.approval_callback = lambda *_: True
     lock = threading.Lock()
     active = 0
     maximum = 0
