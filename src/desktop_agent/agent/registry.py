@@ -108,6 +108,7 @@ class ToolRegistry:
             raise KeyError(f"Unknown tool: {call.tool_name}")
         arguments = self._validate_arguments(spec, call.arguments)
         missing_capabilities = self.capability_policy.missing(spec.capabilities)
+        temporary_capabilities: tuple[Capability, ...] = ()
         if missing_capabilities:
             capability_reason = "Missing capabilities: " + ", ".join(
                 f"{cap.resource}:{','.join(sorted(cap.actions))}@{cap.scope}"
@@ -117,13 +118,16 @@ class ToolRegistry:
                 self.approval_callback
                 and self.approval_callback(spec.name, capability_reason, arguments)
             )
-            if not approved_capability or self.capability_policy.missing(spec.capabilities):
+            if not approved_capability:
                 self.audit_log.record(
                     tool_name=spec.name, application=call.application, risk=spec.risk.name,
                     decision=Decision.DENY.value, outcome="denied", arguments=arguments,
                     detail="Required capability has not been granted.",
                 )
                 raise PermissionError("Required capability has not been granted.")
+            temporary_capabilities = missing_capabilities
+            for capability in temporary_capabilities:
+                self.capability_policy.grant(capability)
         policy = self.policy.evaluate(spec.name, spec.risk)
         decision = policy.decision
         if decision is Decision.APPROVAL_REQUIRED:
@@ -143,6 +147,8 @@ class ToolRegistry:
                 decision=decision.value, outcome=outcome, arguments=arguments,
                 detail=policy.explanation,
             )
+            for capability in temporary_capabilities:
+                self.capability_policy.revoke(capability)
             raise PermissionError(policy.explanation if outcome == "blocked" else "User did not approve this action.")
         # Validate and re-check policy immediately before invoking the side effect.
         arguments = self._validate_arguments(spec, arguments)
@@ -163,6 +169,8 @@ class ToolRegistry:
                 decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
                 detail=final_policy.explanation,
             )
+            for capability in temporary_capabilities:
+                self.capability_policy.revoke(capability)
             raise PermissionError(final_policy.explanation)
         try:
             result = spec.handler(**arguments)
@@ -172,6 +180,9 @@ class ToolRegistry:
                 decision=decision.value, outcome="error", arguments=arguments, detail=str(exc),
             )
             raise
+        finally:
+            for capability in temporary_capabilities:
+                self.capability_policy.revoke(capability)
         self.audit_log.record(
             tool_name=spec.name, application=call.application, risk=spec.risk.name,
             decision=decision.value, outcome="success", arguments=arguments,
