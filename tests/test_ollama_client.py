@@ -46,3 +46,7 @@ def test_describe_image_sends_base64_image_to_local_ollama(monkeypatch):
 def test_describe_image_rejects_oversized_input():
     with pytest.raises(OllamaError, match="4 MiB"):
         OllamaClient("http://127.0.0.1:11434").describe_image("vision", b"x" * (4 * 1024 * 1024 + 1))
+
+def test_describe_image_refuses_non_loopback_ollama():
+    with pytest.raises(OllamaError, match="loopback"):
+        OllamaClient("http://192.168.1.20:11434").describe_image("vision", b"image")
