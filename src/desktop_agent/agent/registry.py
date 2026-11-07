@@ -57,6 +57,13 @@ class ToolRegistry:
             raise ValueError(f"Invalid or duplicate tool name: {spec.name}")
         self._tools[spec.name] = spec
 
+    def risk_for(self, tool_name: str) -> RiskLevel:
+        """Return trusted registration metadata for scheduler concurrency decisions."""
+        spec = self._tools.get(tool_name)
+        if spec is None:
+            raise KeyError(f"Unknown tool: {tool_name}")
+        return spec.risk
+
     def descriptions(self) -> list[dict[str, str]]:
         return [
             {"name": spec.name, "description": spec.description, "risk": spec.risk.name.lower()}
