@@ -23,16 +23,20 @@ class Capability:
 
 
 class CapabilityPolicy:
-    """In-memory grants only; no model can grant or broaden its own capabilities."""
+    """In-memory grants only; revocations override both baseline and session grants."""
 
     def __init__(self, baseline: tuple[Capability, ...] = ()) -> None:
         self._baseline = tuple(baseline)
         self._grants: set[Capability] = set()
+        self._revoked: set[Capability] = set()
         self._lock = RLock()
 
     def missing(self, required: tuple[Capability, ...]) -> tuple[Capability, ...]:
         with self._lock:
-            available = self._baseline + tuple(self._grants)
+            available = tuple(
+                grant for grant in self._baseline + tuple(self._grants)
+                if grant not in self._revoked
+            )
             return tuple(
                 need for need in required
                 if not any(grant.covers(need) for grant in available)
@@ -40,18 +44,22 @@ class CapabilityPolicy:
 
     def grant(self, capability: Capability) -> None:
         with self._lock:
+            self._revoked.discard(capability)
             self._grants.add(capability)
 
     def revoke(self, capability: Capability) -> None:
         with self._lock:
             self._grants.discard(capability)
+            self._revoked.add(capability)
 
     def revoke_all(self) -> None:
         with self._lock:
             self._grants.clear()
+            self._revoked.update(self._baseline)
 
     def grants(self) -> tuple[Capability, ...]:
         with self._lock:
-            return tuple(sorted(self._grants, key=lambda item: (
-                item.resource, item.scope, sorted(item.actions)
-            )))
+            return tuple(sorted(
+                (item for item in self._grants if item not in self._revoked),
+                key=lambda item: (item.resource, item.scope, sorted(item.actions)),
+            ))
