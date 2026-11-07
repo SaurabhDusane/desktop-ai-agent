@@ -18,8 +18,11 @@ from desktop_agent.agent.memory import RepetitionMemory, SessionContext
 from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
 from desktop_agent.agent.runtime import AgentRuntime
+from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.tools import register_desktop_tools
 from desktop_agent.ui.approval import ApprovalBroker
+from desktop_agent.desktop.environment import EnvironmentStateGraph, EnvironmentStateService
+from desktop_agent.desktop.environment_tools import register_environment_tools
 
 
 class Worker(QObject):
@@ -53,17 +56,24 @@ class MainWindow(QMainWindow):
         register_desktop_tools(self.tool_registry)
         self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
         self.audit_log.record_event("application_started", {"platform": sys.platform})
+        self.environment_graph = EnvironmentStateGraph()
         self.desktop_tools_available = False
         self.desktop_tools_error: str | None = None
+        window_observer = None
         if sys.platform == "win32":
             try:
                 from desktop_agent.desktop.tools import register_uia_tools
                 register_uia_tools(self.tool_registry)
+                window_observer = lambda: self.tool_registry.execute(
+                    ToolCall("windows_desktop_list_windows")
+                )
                 self.desktop_tools_available = True
                 self.audit_log.record_event("desktop_tools_registered")
             except Exception as exc:
                 self.desktop_tools_error = str(exc)
                 self.audit_log.record_event("desktop_tools_unavailable", {"error": str(exc)})
+        self.environment_service = EnvironmentStateService(self.environment_graph, window_observer)
+        register_environment_tools(self.tool_registry, self.environment_service)
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
         self.resize(1000, 700)
