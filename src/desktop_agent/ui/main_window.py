@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
             self.permission_policy, self.audit_log, self.approval_broker.approve
         )
         register_desktop_tools(self.tool_registry)
-                self.model_router = ModelRouter(ModelBenchmarkStore(audit_path.parent / "model-benchmarks.sqlite3"))
+        self.model_router = ModelRouter(ModelBenchmarkStore(audit_path.parent / "model-benchmarks.sqlite3"))
         self.resource_monitor = ResourceMonitor()
         self.resource_budgets = ResourceBudgetManager()
         self.installed_models: list[str] = []
