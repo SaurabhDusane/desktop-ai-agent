@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Signal, Qt
+from PySide6.QtCore import QObject, QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QComboBox, QDockWidget, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPushButton, QTextBrowser, QVBoxLayout, QWidget,
@@ -102,6 +102,10 @@ class MainWindow(QMainWindow):
         self.task_event_bridge.event_received.connect(self._on_task_event)
         self.task_event_bridge.approval_received.connect(self.task_dashboard.set_approval)
         self.approval_broker.approval_state.connect(self.task_event_bridge.approval_received.emit)
+        self.metrics_timer = QTimer(self)
+        self.metrics_timer.setInterval(500)
+        self.metrics_timer.timeout.connect(lambda: self.task_dashboard.update_metrics(self.task_scheduler.metrics()))
+        self.metrics_timer.start()
         register_environment_tools(self.tool_registry, self.environment_service)
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
