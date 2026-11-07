@@ -65,15 +65,24 @@ class WindowsUIAutomation:
             queue = [(root, 0)]
             while queue and len(found) < max_nodes:
                 node, depth = queue.pop(0)
+                control_type = str(node.control_type or "")[:60]
+                # UIA "name" may contain document text or a field's current value.
+                # Expose names only for a small allowlist of actionable controls.
+                safe_name_types = {
+                    "Button", "MenuItem", "TabItem", "CheckBox",
+                    "RadioButton", "Hyperlink",
+                }
                 found.append({
-                    "name": (node.name or "")[:160],
-                    "control_type": str(node.control_type or "")[:60],
+                    "name": (node.name or "")[:80] if control_type in safe_name_types else "",
+                    "control_type": control_type,
                     "automation_id": str(node.automation_id or "")[:120],
                     "depth": depth,
                 })
                 if depth < max_depth:
                     try:
-                        queue.extend((child, depth + 1) for child in node.children())
+                        children = node.children()
+                        remaining = max_nodes - len(found) - len(queue)
+                        queue.extend((child, depth + 1) for child in children[:remaining])
                     except Exception:
                         pass
             return found
