@@ -185,8 +185,7 @@ class TaskScheduler:
                     sid = ready.pop(0)
                     pending.remove(sid)
                     step = steps[sid]
-                    started = time.monotonic()
-                    self._emit(plan_id, sid, TaskState.RUNNING, started)
+                    self._emit(plan_id, sid, TaskState.RUNNING)
                     future = self._tool_pool.submit(self._invoke, step, plan_id, cancel, deadline)
                     running[future] = sid
 
