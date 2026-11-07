@@ -222,14 +222,17 @@ class MainWindow(QMainWindow):
     def send_message(self) -> None:
         prompt = self.input.text().strip()
         model = self.model_box.currentText()
+        snapshot = self.resource_monitor.snapshot()
+        budget = self.resource_budgets.budget(snapshot)
+        self.session_context.set_context_budget(budget.max_context_tokens * 4)
         if model == "Auto (local routing)":
             if not self.installed_models:
                 self._show_error("No local models are installed. Refresh the model list first.")
                 return
-            snapshot = self.resource_monitor.snapshot()
-            budget = self.resource_budgets.budget(snapshot)
             decision = self.model_router.choose(
-                self.installed_models, task="tools" if self.tool_registry.model_schemas() else "general",
+                self.installed_models,
+                task="tools" if self.tool_registry.model_schemas() else "general",
+                required_context=budget.max_context_tokens,
                 available_vram_bytes=snapshot.free_vram_bytes,
             )
             model = decision.model
@@ -244,13 +247,21 @@ class MainWindow(QMainWindow):
         if not model:
             self._show_error("No model selected. Install a model in Ollama, then refresh.")
             return
+        profile = next((item for item in self.model_router.profiles() if item.name == model), None)
+        if profile and profile.context_length:
+            self.session_context.set_context_budget(
+                min(budget.max_context_tokens, profile.context_length) * 4
+            )
+        self.audit_log.record_event("resource_budget_applied", {
+            "model": model, "context_tokens": budget.max_context_tokens,
+            "parallel_requests": budget.max_parallel_requests,
+            "warnings": list(budget.warnings),
+        })
         self.audit_log.record_event("user_message", {"model": model, "character_count": len(prompt)})
         self.session_context.add("user", prompt)
         self.input.clear()
         self.send_button.setEnabled(False)
         self.chat_view.append(f"<b>You:</b> {self._escape(prompt)}")
-        # Context compaction runs in the worker thread and uses local Ollama only.
-        messages = None
 
         def request_answer() -> str:
             context_messages = self.session_context.build(
