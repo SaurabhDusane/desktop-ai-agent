@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -37,7 +40,7 @@ class MainWindow(QMainWindow):
         self.client = OllamaClient(settings.ollama_base_url, settings.ollama_timeout_seconds)
         # The approval callback marshals confirmations onto the Qt main thread.
         self.approval_broker = ApprovalBroker(self)
-        audit_path = Settings.audit_database_path()
+        audit_path = Path.home() / ".local-desktop-agent" / "audit.sqlite3"
         self.tool_registry = ToolRegistry(
             PermissionPolicy(), AuditLog(audit_path), self.approval_broker.approve
         )
