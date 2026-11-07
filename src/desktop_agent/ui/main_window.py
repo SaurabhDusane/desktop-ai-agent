@@ -17,6 +17,8 @@ from desktop_agent.agent.audit import AuditLog
 from desktop_agent.agent.memory import RepetitionMemory, SessionContext
 from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
+from desktop_agent.agent.runtime import AgentRuntime
+from desktop_agent.agent.tools import register_desktop_tools
 from desktop_agent.ui.approval import ApprovalBroker
 
 
@@ -48,6 +50,8 @@ class MainWindow(QMainWindow):
         self.tool_registry = ToolRegistry(
             self.permission_policy, self.audit_log, self.approval_broker.approve
         )
+        register_desktop_tools(self.tool_registry)
+        self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
         self.audit_log.record_event("application_started", {"platform": sys.platform})
         self.desktop_tools_available = False
         self.desktop_tools_error: str | None = None
@@ -179,7 +183,7 @@ class MainWindow(QMainWindow):
             context_messages = self.session_context.build(
                 lambda transcript: self.client.summarize(model, transcript)
             )
-            return self.client.chat(model, context_messages)
+            return self.agent_runtime.run(model, context_messages)
 
         def received(answer: str) -> None:
             self.session_context.add("assistant", answer)
