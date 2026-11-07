@@ -60,7 +60,6 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.desktop_tools_error = str(exc)
                 self.audit_log.record_event("desktop_tools_unavailable", {"error": str(exc)})
-        self.history: list[dict[str, str]] = []
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
         self.resize(1000, 700)
@@ -185,10 +184,6 @@ class MainWindow(QMainWindow):
         def received(answer: str) -> None:
             self.session_context.add("assistant", answer)
             self.audit_log.record_event("assistant_response", {"model": model, "content": answer})
-            self.history.extend([
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": answer},
-            ])
             self.chat_view.append(f"<b>Assistant:</b> {self._escape(answer)}")
             self.send_button.setEnabled(True)
 
