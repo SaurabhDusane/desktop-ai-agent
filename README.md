@@ -144,3 +144,21 @@ The chat UI uses a bounded in-memory `SessionContext` rather than sending the en
 The memory database is `~/.local-desktop-agent/memory.sqlite3` and contains promoted patterns only. The repetition-learning interface is not yet connected to tool execution because model-directed tool invocation is not yet implemented. It will be connected at that boundary when action workflows are introduced.
 
 Context size is currently a character-based bound, not an exact model tokenizer budget. The newest request is retained (and may be truncated if it alone exceeds the configured budget). The context summary is session-only and is discarded when the app closes. A later enhancement can add explicit user controls to inspect, pin, or delete promoted patterns.
+
+
+## Secure model-to-tool execution
+
+The chat path now uses Ollama's native tool-call protocol through a bounded
+agent runtime. Only registered tools are exposed to the model. Every proposed
+call is parsed, checked against a closed argument schema, and passed through
+the central registry for policy evaluation, approval, execution, and audit.
+Unknown tools and malformed arguments fail closed. Sensitive actions continue
+to require fresh approval for each invocation; the model cannot grant itself
+permissions or execute arbitrary shell/Python code.
+
+The runtime treats user, tool, file, and UI content as untrusted; limits a turn
+to four tool rounds and eight calls; caps serialized tool arguments/results;
+and returns explicit error results rather than implying success. A tool-call
+limit stops further autonomous execution. This is the first secure execution
+milestone, not a claim that the later scheduler, cancellation, capability
+scopes, or dashboard are complete.
