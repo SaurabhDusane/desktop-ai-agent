@@ -79,8 +79,8 @@ def test_state_changing_steps_are_serialized(tmp_path):
     scheduler = TaskScheduler(registry, max_workers=2)
     try:
         result = scheduler.submit(plan, "mutations").future.result(timeout=5)
-        assert result.status == "approval_required"  # sensitive/system changes require approval
-        assert maximum <= 1
+        assert result.status == "completed"  # the approval callback explicitly authorized both actions
+        assert maximum == 1
     finally:
         scheduler.shutdown()
 
@@ -144,5 +144,25 @@ def test_deadline_rejects_steps_not_yet_started(tmp_path):
         result = handle.future.result(timeout=5)
         assert result.status == "timed_out"
         assert not seen
+    finally:
+        scheduler.shutdown()
+
+
+
+def test_state_changing_steps_stop_when_approval_is_denied(tmp_path):
+    registry = make_registry(tmp_path)
+    executed = []
+    registry.approval_callback = lambda *_: False
+    registry.register(ToolSpec("change", "Change", RiskLevel.SYSTEM_CHANGE,
+                               lambda: executed.append(True)))
+    plan = AgentPlan("denied mutation", (
+        PlanStep("a", "change", ToolCall("change")),
+    ))
+    scheduler = TaskScheduler(registry)
+    try:
+        result = scheduler.submit(plan, "denied-mutation").future.result(timeout=5)
+        assert result.status == "approval_required"
+        assert result.steps[0].status == "denied"
+        assert executed == []
     finally:
         scheduler.shutdown()
