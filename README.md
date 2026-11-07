@@ -33,6 +33,6 @@ Choose a model that fits your available VRAM/RAM; `qwen2.5:7b` is an example, no
 
 ## Safety
 
-The model does not receive unrestricted shell, PowerShell, Python, mouse, keyboard, or filesystem access. Future tools will use narrow permissions and explicit approval for sensitive actions.
+The model does not receive unrestricted shell, PowerShell, Python, mouse, keyboard, or filesystem access. Tool calls pass through a central risk policy and audit log. Read-only and routine tools can run automatically; system-changing and sensitive tools require an approval callback; restricted tools are blocked. The current desktop launcher only accepts fixed catalog IDs and never runs model-generated shell strings. Future tools will use narrow permissions and explicit approval for sensitive actions.
 
 See `LICENSE` for licensing information.
