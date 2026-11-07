@@ -129,3 +129,18 @@ The audit log includes chat content so it can contain sensitive personal informa
 - Read-only mode and emergency stop are in-memory controls, not persistent policy configuration.
 - Prompt-injection isolation, Windows ACL hardening, protected audit export, backups/rollback, and a dedicated activity-log viewer remain future work.
 - The model chat loop still does not invoke desktop tools.
+
+
+## Session context and local learning
+
+The chat UI uses a bounded in-memory `SessionContext` rather than sending the entire conversation on every turn.
+
+- Recent turns remain in RAM; when the configured character budget is exceeded, older turns are compressed into a short summary using the selected local Ollama model.
+- Only the summary and recent messages are sent with the next request. No cloud summarizer or external memory service is used.
+- Raw session conversation is not written to a memory database. The existing security audit log remains separate and may still contain chat content.
+- A separate local `RepetitionMemory` component is provided for future tool workflows. It promotes a compact reusable description only after at least three successful observations of the same normalized action signature. It stores no transcript or raw action arguments.
+- Repetition is not permission: learned patterns cannot change tool risk classifications, approval requirements, or policy decisions.
+
+The memory database is `~/.local-desktop-agent/memory.sqlite3`. The repetition-learning interface is not yet connected to tool execution because model-directed tool invocation is not yet implemented. It will be connected at that boundary when action workflows are introduced.
+
+Context size is currently a conservative character-based approximation, not an exact model tokenizer budget. The context summary is session-only and is discarded when the app closes. A later enhancement can add explicit user controls to inspect, pin, or delete promoted patterns.
