@@ -2,6 +2,7 @@
 
 import base64
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -55,6 +56,9 @@ class OllamaClient:
         """Analyze one in-memory image with a local Ollama vision-capable model."""
         if not model.strip() or not image:
             raise OllamaError("A model and non-empty image are required.")
+        host = (urlparse(self._base_url).hostname or "").lower()
+        if host not in {"localhost", "127.0.0.1", "::1"}:
+            raise OllamaError("Screen images may only be sent to a loopback Ollama endpoint.")
         if len(image) > 4 * 1024 * 1024:
             raise OllamaError("Image exceeds the 4 MiB perception limit.")
         encoded = base64.b64encode(image).decode("ascii")
