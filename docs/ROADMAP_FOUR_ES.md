@@ -98,3 +98,18 @@ This roadmap organizes the desktop agent around Embodiment, Efficiency, Environm
 - Autonomous deletion, purchases, sending messages, or other consequential actions without explicit approval.
 - Persistent full conversation transcripts as a substitute for memory.
 - Learned workflows changing policy, permissions, or risk classifications.
+
+
+## Implementation notes
+
+### Workstream 4 — Environment state graph (initial desktop slice)
+
+Implemented on \`feat/local-desktop-agent\`:
+
+- Session-local graph for current desktop workspace, process IDs, and visible windows.
+- Explicit refresh through the already-authorized Windows window-list tool.
+- Bounded snapshot and metadata query tools registered through the central tool registry.
+- Freshness timestamp and 60-second stale indicator; refresh replaces prior observations.
+- No persistence, screenshots, document contents, or background monitoring.
+
+Still outstanding: richer process/application identity, project/workspace discovery, event-driven updates, and verified end-to-end Windows acceptance. This milestone is an initial desktop graph, not completion of all environment-state requirements.
