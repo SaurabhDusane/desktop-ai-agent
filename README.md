@@ -51,7 +51,7 @@ The UI Automation adapter uses the `pywinauto` UIA backend. It is loaded only wh
 ### Current desktop capabilities
 
 - Enumerate visible top-level windows (titles, process IDs, handles, and control type; no document text).
-- Inspect a bounded UIA control tree (maximum depth 5 and 200 nodes; does not read edit values).
+- Inspect a bounded UIA control tree (maximum depth 5 and 200 nodes; suppresses names for text-bearing controls and does not read edit values).
 - Focus one exact visible window, optionally disambiguated by process ID.
 - Click one uniquely matched control.
 - Enter text into one uniquely matched control.
@@ -80,7 +80,7 @@ The approval callback must be connected to a real user confirmation UI before en
 7. Verify duplicate window titles and ambiguous controls are rejected.
 8. Check the SQLite audit log for allowed, denied, and failed actions.
 
-UI Automation availability and control behavior vary by application, integrity level, and Windows session. Elevated applications may not be controllable from a non-elevated agent. No attempt is made to bypass those boundaries.
+Live UIA smoke testing is opt-in with `DESKTOP_AGENT_RUN_UIA_SMOKE=1` from an interactive Windows session; hosted CI validates the adapter with fakes. UI Automation availability and control behavior vary by application, integrity level, and Windows session. Elevated applications may not be controllable from a non-elevated agent. No attempt is made to bypass those boundaries.
 
 ### Interactive approval dialog
 
