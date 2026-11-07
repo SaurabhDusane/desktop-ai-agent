@@ -94,14 +94,14 @@ class ResourceBudgetManager:
         context = requested_context
         parallel = requested_parallel
         if snapshot.available_ram_bytes is not None:
-            usable = max(0, snapshot.available_ram_bytes - self.reserve_ram_bytes)
-            if usable < 2 * 1024**3:
+            available = snapshot.available_ram_bytes
+            if available < 2 * 1024**3:
                 context = min(context, 4096)
                 parallel = 1
                 warnings.append("Low available RAM: reduced context and serialized inference.")
-            elif usable < 6 * 1024**3:
+            elif available < 6 * 1024**3:
                 context = min(context, 8192)
-                parallel = min(parallel, 1)
+                parallel = 1
                 warnings.append("Moderate RAM pressure: limited inference concurrency.")
         if snapshot.free_vram_bytes is not None:
             usable_vram = max(0, snapshot.free_vram_bytes - self.reserve_vram_bytes)
