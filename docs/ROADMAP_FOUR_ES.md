@@ -113,3 +113,17 @@ Implemented on \`feat/local-desktop-agent\`:
 - No persistence, screenshots, document contents, or background monitoring.
 
 Still outstanding: richer process/application identity, project/workspace discovery, event-driven updates, and verified end-to-end Windows acceptance. This milestone is an initial desktop graph, not completion of all environment-state requirements.
+
+
+### Workstream 5 — Task scheduler and observability (initial implementation)
+
+Implemented on `feat/local-desktop-agent`:
+
+- Bounded plan admission and bounded worker pool; independent read-only steps can run concurrently.
+- Dependency-aware scheduling; downstream steps are skipped after failure, denial, cancellation, or deadline.
+- State-changing/sensitive operations are serialized, and every step still invokes the central `ToolRegistry`.
+- Cooperative cancellation and monotonic plan deadlines; in-flight third-party handlers cannot be forcibly terminated.
+- Structured queued/running/completed/failed/denied/cancelled/timed-out/skipped events and rolling scheduler metrics.
+- Desktop shell records task-state events in the local audit stream.
+
+Still outstanding: model-generated plan construction and preview, live task dashboard, robust shutdown coordination for long-running handlers, per-tool cancellation, resource metrics, and executed Windows/Ollama acceptance. This is an initial scheduling service, not hard preemption or a complete task dashboard.
