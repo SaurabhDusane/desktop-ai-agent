@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import sqlite3
 import time
+from pathlib import Path
 from typing import Callable, Iterable
 
 
@@ -27,18 +29,49 @@ class RoutingDecision:
     measured: bool
 
 
+class ModelBenchmarkStore:
+    """Persists compact local benchmark measurements, never prompts or responses."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.path) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS model_benchmarks (model TEXT PRIMARY KEY, latency_ms REAL NOT NULL, quality REAL NOT NULL, updated_at REAL NOT NULL)")
+
+    def record(self, model: str, latency_ms: float, quality: float) -> None:
+        if not model.strip() or latency_ms <= 0 or not math.isfinite(latency_ms) or not 0 <= quality <= 1:
+            raise ValueError("Invalid benchmark measurement.")
+        with sqlite3.connect(self.path) as db:
+            db.execute("INSERT INTO model_benchmarks VALUES (?, ?, ?, ?) ON CONFLICT(model) DO UPDATE SET latency_ms=excluded.latency_ms, quality=excluded.quality, updated_at=excluded.updated_at", (model, latency_ms, quality, time.time()))
+
+    def load(self) -> dict[str, tuple[float, float]]:
+        with sqlite3.connect(self.path) as db:
+            rows = db.execute("SELECT model, latency_ms, quality FROM model_benchmarks").fetchall()
+        return {name: (latency, quality) for name, latency, quality in rows}
+
+
 class ModelRouter:
     """Ranks installed models; never pulls, starts, or changes a model implicitly."""
 
-    def __init__(self) -> None:
+    def __init__(self, benchmark_store: ModelBenchmarkStore | None = None) -> None:
         self._profiles: dict[str, ModelProfile] = {}
+        self.benchmark_store = benchmark_store
 
     def update_profiles(self, profiles: Iterable[ModelProfile]) -> None:
         self._profiles = {profile.name: profile for profile in profiles if profile.name}
+        measurements = self.benchmark_store.load() if self.benchmark_store else {}
+        for name, (latency, quality) in measurements.items():
+            old = self._profiles.get(name, ModelProfile(name))
+            self._profiles[name] = ModelProfile(
+                old.name, old.parameter_size, old.context_length, old.capabilities,
+                latency, quality, old.estimated_vram_bytes, "local_benchmark",
+            )
 
     def record_benchmark(self, model: str, latency_ms: float, quality: float) -> None:
         if latency_ms <= 0 or not math.isfinite(latency_ms) or not 0 <= quality <= 1:
             raise ValueError("Benchmark latency must be positive and quality must be between 0 and 1.")
+        if self.benchmark_store:
+            self.benchmark_store.record(model, latency_ms, quality)
         old = self._profiles.get(model, ModelProfile(model))
         self._profiles[model] = ModelProfile(
             old.name, old.parameter_size, old.context_length, old.capabilities,
