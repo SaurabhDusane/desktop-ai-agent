@@ -45,10 +45,16 @@ class MainWindow(QMainWindow):
             PermissionPolicy(), AuditLog(audit_path), self.approval_broker.approve
         )
         self.desktop_tools_available = False
+        self.desktop_tools_error: str | None = None
         if sys.platform == "win32":
-            from desktop_agent.desktop.tools import register_uia_tools
-            register_uia_tools(self.tool_registry)
-            self.desktop_tools_available = True
+            try:
+                from desktop_agent.desktop.tools import register_uia_tools
+                register_uia_tools(self.tool_registry)
+                self.desktop_tools_available = True
+            except Exception as exc:
+                # Missing optional dependencies or unsupported desktop sessions
+                # must not prevent the chat UI from starting.
+                self.desktop_tools_error = str(exc)
         self.history: list[dict[str, str]] = []
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
@@ -56,7 +62,12 @@ class MainWindow(QMainWindow):
 
         self.model_box = QComboBox()
         self.refresh_button = QPushButton("Refresh models")
-        self.status = QLabel("Connecting to local Ollama…")
+        status_text = "Connecting to local Ollama…"
+        if self.desktop_tools_available:
+            status_text += " Windows desktop tools are registered."
+        elif self.desktop_tools_error:
+            status_text += f" Desktop automation unavailable: {self.desktop_tools_error}"
+        self.status = QLabel(status_text)
         self.chat_view = QTextBrowser()
         self.input = QLineEdit()
         self.input.setPlaceholderText("Message your local model…")
