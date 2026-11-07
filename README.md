@@ -249,3 +249,23 @@ The desktop shell includes a dockable **Task Dashboard**. Model-requested tool c
 The dashboard shows a bounded session view of plan/step IDs, tool description, queued/running/completed/denied/failed/cancelled/timed-out/skipped states, timestamps, and measured durations. It also shows pending approval status and scheduler counters (submitted, completed, failed, rejected, active plans/steps, and average step duration). Scheduler events are marshalled onto the Qt UI thread before updating widgets and are recorded in the local audit stream.
 
 This is a monitoring surface, not yet a full multi-step planning workspace: the model currently proposes individual tool calls, the dashboard does not persist history across restarts, and user-facing plan cancellation/inspection and resource telemetry are still future work. Cancellation remains cooperative; an already-running third-party action cannot be forcibly undone.
+
+
+## On-demand multimodal screen perception (initial implementation)
+
+Install the optional capture dependencies on Windows:
+
+```powershell
+pip install -e ".[windows,perception,dev]"
+```
+
+The Windows desktop adapter registers `perception_describe_primary_screen`. When the model requests it, the central registry requires fresh approval for that invocation and the `desktop:capture@primary_display` capability. A session capability grant does not bypass the sensitive-action approval.
+
+- Captures the primary display once, only after approval; no background capture or screen recording is enabled.
+- Resizes the screenshot to at most 1600×1000 and rejects images larger than 4 MiB.
+- Sends the image only to an installed Ollama model whose local metadata advertises vision capability. If no such model is available, the tool fails closed rather than silently sending the image to a text-only model or a cloud service.
+- The screenshot is held in memory and discarded after analysis; it is not written to disk or included in the audit log.
+- The vision prompt treats screen text as untrusted instructions and asks the model not to disclose credentials. The bounded textual description is returned through the ordinary tool-result path.
+- The tool is unavailable outside the Windows desktop registration path. Read-only mode blocks it because screen capture is classified as sensitive.
+
+This is the first visual-perception slice. It does not yet include OCR-only extraction, per-window capture, image-region selection, camera input, or a user-facing capture preview/retention settings. Vision-model quality and GPU performance must be verified on the target machine.
