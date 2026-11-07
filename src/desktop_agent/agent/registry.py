@@ -29,7 +29,7 @@ class ToolRegistry:
         self.policy = policy
         self.audit_log = audit_log
         self.approval_callback = approval_callback
-        self.capability_policy = capability_policy or CapabilityPolicy()
+        self.capability_policy = capability_policy or CapabilityPolicy((Capability('desktop', frozenset({'observe'})),))
         self._tools: dict[str, ToolSpec] = {}
 
     def register(self, spec: ToolSpec) -> None:
@@ -108,7 +108,7 @@ class ToolRegistry:
             raise KeyError(f"Unknown tool: {call.tool_name}")
         arguments = self._validate_arguments(spec, call.arguments)
         missing_capabilities = self.capability_policy.missing(spec.capabilities)
-        temporary_capabilities: tuple[Capability, ...] = ()
+        capability_approved = False
         if missing_capabilities:
             capability_reason = "Missing capabilities: " + ", ".join(
                 f"{cap.resource}:{','.join(sorted(cap.actions))}@{cap.scope}"
@@ -125,9 +125,7 @@ class ToolRegistry:
                     detail="Required capability has not been granted.",
                 )
                 raise PermissionError("Required capability has not been granted.")
-            temporary_capabilities = missing_capabilities
-            for capability in temporary_capabilities:
-                self.capability_policy.grant(capability)
+            capability_approved = True
         policy = self.policy.evaluate(spec.name, spec.risk)
         decision = policy.decision
         if decision is Decision.APPROVAL_REQUIRED:
@@ -147,14 +145,12 @@ class ToolRegistry:
                 decision=decision.value, outcome=outcome, arguments=arguments,
                 detail=policy.explanation,
             )
-            for capability in temporary_capabilities:
-                self.capability_policy.revoke(capability)
             raise PermissionError(policy.explanation if outcome == "blocked" else "User did not approve this action.")
         # Validate and re-check policy immediately before invoking the side effect.
         arguments = self._validate_arguments(spec, arguments)
         missing_capabilities = self.capability_policy.missing(spec.capabilities)
         final_policy = self.policy.evaluate(spec.name, spec.risk)
-        if missing_capabilities:
+        if missing_capabilities and not capability_approved:
             self.audit_log.record(
                 tool_name=spec.name, application=call.application, risk=spec.risk.name,
                 decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
@@ -180,9 +176,6 @@ class ToolRegistry:
                 decision=decision.value, outcome="error", arguments=arguments, detail=str(exc),
             )
             raise
-        finally:
-            for capability in temporary_capabilities:
-                self.capability_policy.revoke(capability)
         self.audit_log.record(
             tool_name=spec.name, application=call.application, risk=spec.risk.name,
             decision=decision.value, outcome="success", arguments=arguments,
