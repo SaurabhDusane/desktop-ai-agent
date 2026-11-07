@@ -115,7 +115,9 @@ class TaskScheduler:
         deadline_at = time.monotonic() + deadline_seconds
         # A deadline may expire while the caller is still submitting the plan.
         # In that case, do not dispatch any step to a worker thread.
-        if time.monotonic() >= deadline_at:
+        # Sub-10ms budgets are below a dependable cross-platform dispatch
+        # window (especially on Windows); fail closed instead of racing a worker.
+        if deadline_seconds < 0.01 or time.monotonic() >= deadline_at:
             result_future.set_result(PlanResult(
                 plan.goal,
                 "timed_out",
