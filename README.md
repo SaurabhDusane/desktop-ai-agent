@@ -107,7 +107,7 @@ The application now has centrally enforced safety modes:
 - **Read-only mode:** permits read-only tools and denies every tool classified above `READ_ONLY`. Enabling it revokes session grants.
 - **Fresh approvals:** sensitive operations continue to require an individual approval for every invocation.
 - **Filesystem boundary helper:** `SafePathPolicy` resolves candidate paths and checks them against configured allowed and blocked roots. Future file tools must call this helper before every read or write; it does not grant filesystem access by itself.
-- **Audit records:** application startup/shutdown, chat prompts and responses, model-list refreshes, errors, safety-mode changes, and tool decisions are recorded locally.
+- **Audit records:** application startup/shutdown, message metadata, model-list refreshes, errors, safety-mode changes, tool decisions, and scheduler state transitions are recorded locally.
 
 ### Local audit files
 
@@ -118,7 +118,7 @@ The application stores its audit database and JSONL activity stream under:
 
 The JSONL stream is hash-chained. Each record includes the previous record's hash and its own digest; startup verifies the existing chain and refuses to append if verification fails. This makes accidental edits and simple tampering detectable, but is **not** tamper-proof against an attacker who can replace the entire log and recompute the chain. Keep the directory protected with your Windows account permissions and back it up separately.
 
-The audit log includes chat content so it can contain sensitive personal information. Basic secret-pattern redaction is applied, but it cannot identify every secret. Treat both files as private data. Do not share them without reviewing their contents.
+Chat prompt and response bodies are not written to the audit log; only model and character-count metadata are retained. Tool arguments and approval details may still contain sensitive data. Basic secret-pattern redaction is applied, but it cannot identify every secret. Treat both files as private data.
 
 ### Current limitations
 
@@ -208,3 +208,20 @@ The desktop agent now has a bounded, in-memory environment graph for the current
 - Node, edge, query, and result limits are enforced. State is not written to disk and is discarded when the application exits.
 
 This is an initial desktop slice of the environment graph, not a complete inventory of files, browser tabs, projects, or application-internal state. Refresh is explicit/on-demand; no background screen or window monitoring is enabled. On non-Windows platforms, graph queries remain available but desktop refresh reports that the Windows observer is unavailable.
+
+
+## Task scheduler and observability (initial implementation)
+
+The scheduler in `desktop_agent.agent.scheduler` accepts a validated `AgentPlan`
+and returns a `PlanHandle` with a result future and cooperative cancellation:
+
+- Plan submissions are bounded (default: four active/queued plans); a full queue rejects new work rather than growing without limit.
+- Dependency-ready steps are dispatched to a bounded worker pool (default: three workers). Independent read-only tools may overlap.
+- State-changing and sensitive tools are serialized with a scheduler lock. Their actual authorization is still performed by `ToolRegistry`; scheduler metadata never grants permission.
+- Each plan has a monotonic deadline. Cancellation and deadlines prevent not-yet-started steps from running, and downstream steps are skipped after a failed dependency.
+- Structured task events include plan/step IDs, state, timestamp, duration where available, and bounded detail. The desktop shell records these events in the local audit stream.
+- Metrics expose submitted/completed/failed/rejected plans, active plan/step counts, and a rolling average step duration.
+
+**Important execution boundary:** cancellation and deadlines are cooperative. Python cannot safely terminate a tool handler that is already running inside another application. A timed-out or cancelled plan must not be interpreted as proof that an in-flight OS action was undone. The scheduler waits for already-running work up to the plan deadline and reports the actual completed step outcomes when available.
+
+The scheduler is an execution service for typed plans, not yet a model-generated multi-step planning UI. The current chat runtime still invokes individual model-requested tools through the same registry; plan preview, live task dashboard, hard process isolation, per-tool interruption, retries, and persistent metrics remain future work.
