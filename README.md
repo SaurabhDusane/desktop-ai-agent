@@ -240,3 +240,12 @@ The model selector now includes **Auto (local routing)**. The router only consid
 - The resource budget manager reduces the session character budget under RAM pressure and reports conservative VRAM warnings. Resource decisions and selected model are recorded as metadata in the local audit log.
 
 **Limitations:** VRAM estimation is available only for models currently loaded by Ollama; unloaded models have unknown VRAM requirements. `nvidia-smi` is optional, so GPU details may be unavailable. The budget is a conservative heuristic, not a guarantee against out-of-memory errors. Current resource budgets constrain chat context, but do not yet dynamically resize Ollama's server-side context or scheduler worker pool. Benchmarking is exposed as a local API; a guided benchmark and quality-rating UI is still future work. Manual model selection always overrides automatic routing.
+
+
+## Live task dashboard (initial implementation)
+
+The desktop shell includes a dockable **Task Dashboard**. Model-requested tool calls are wrapped as bounded one-step plans and submitted through the existing scheduler; they no longer bypass it. Each step still passes through the central tool registry, capability checks, risk policy, approval broker, and audit trail.
+
+The dashboard shows a bounded session view of plan/step IDs, tool description, queued/running/completed/denied/failed/cancelled/timed-out/skipped states, timestamps, and measured durations. It also shows pending approval status and scheduler counters (submitted, completed, failed, rejected, active plans/steps, and average step duration). Scheduler events are marshalled onto the Qt UI thread before updating widgets and are recorded in the local audit stream.
+
+This is a monitoring surface, not yet a full multi-step planning workspace: the model currently proposes individual tool calls, the dashboard does not persist history across restarts, and user-facing plan cancellation/inspection and resource telemetry are still future work. Cancellation remains cooperative; an already-running third-party action cannot be forcibly undone.

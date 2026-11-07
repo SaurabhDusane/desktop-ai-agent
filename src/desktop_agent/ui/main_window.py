@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QComboBox, QDockWidget, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPushButton, QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -24,6 +24,7 @@ from desktop_agent.agent.resources import ResourceMonitor, ResourceBudgetManager
 from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.tools import register_desktop_tools
 from desktop_agent.ui.approval import ApprovalBroker
+from desktop_agent.ui.task_dashboard import TaskDashboard
 from desktop_agent.desktop.environment import EnvironmentStateGraph, EnvironmentStateService
 from desktop_agent.desktop.environment_tools import register_environment_tools
 
@@ -43,6 +44,11 @@ class Worker(QObject):
             self.failed.emit(str(exc))
 
 
+class TaskEventBridge(QObject):
+    event_received = Signal(object)
+    approval_received = Signal(str, bool)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -57,21 +63,18 @@ class MainWindow(QMainWindow):
             self.permission_policy, self.audit_log, self.approval_broker.approve
         )
         register_desktop_tools(self.tool_registry)
-        self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
         self.model_router = ModelRouter(ModelBenchmarkStore(audit_path.parent / "model-benchmarks.sqlite3"))
         self.resource_monitor = ResourceMonitor()
         self.resource_budgets = ResourceBudgetManager()
         self.installed_models: list[str] = []
+        self.task_event_bridge = TaskEventBridge(self)
         self.task_scheduler = TaskScheduler(
             self.tool_registry,
             max_workers=3,
             max_queued_plans=4,
-            event_callback=lambda event: self.audit_log.record_event("task_state", {
-                "plan_id": event.plan_id, "step_id": event.step_id,
-                "state": event.state.value, "timestamp": event.timestamp,
-                "duration_seconds": event.duration_seconds, "detail": event.detail,
-            }),
+            event_callback=self.task_event_bridge.event_received.emit,
         )
+        self.agent_runtime = AgentRuntime(self.client, self.tool_registry, scheduler=self.task_scheduler)
         self.audit_log.record_event("application_started", {"platform": sys.platform})
         self.environment_graph = EnvironmentStateGraph()
         self.desktop_tools_available = False
@@ -91,6 +94,18 @@ class MainWindow(QMainWindow):
                 self.desktop_tools_error = str(exc)
                 self.audit_log.record_event("desktop_tools_unavailable", {"error": str(exc)})
         self.environment_service = EnvironmentStateService(self.environment_graph, window_observer)
+        self.task_dashboard = TaskDashboard(self)
+        self.task_dock = QDockWidget("Task Dashboard", self)
+        self.task_dock.setObjectName("taskDashboardDock")
+        self.task_dock.setWidget(self.task_dashboard)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.task_dock)
+        self.task_event_bridge.event_received.connect(self._on_task_event)
+        self.task_event_bridge.approval_received.connect(self.task_dashboard.set_approval)
+        self.approval_broker.approval_state.connect(self.task_event_bridge.approval_received.emit)
+        self.metrics_timer = QTimer(self)
+        self.metrics_timer.setInterval(500)
+        self.metrics_timer.timeout.connect(lambda: self.task_dashboard.update_metrics(self.task_scheduler.metrics()))
+        self.metrics_timer.start()
         register_environment_tools(self.tool_registry, self.environment_service)
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
@@ -138,6 +153,15 @@ class MainWindow(QMainWindow):
         self.send_button.clicked.connect(self.send_message)
         self.input.returnPressed.connect(self.send_message)
         self.refresh_models()
+
+    def _on_task_event(self, event) -> None:
+        self.audit_log.record_event("task_state", {
+            "plan_id": event.plan_id, "step_id": event.step_id,
+            "state": event.state.value, "timestamp": event.timestamp,
+            "duration_seconds": event.duration_seconds, "detail": event.detail,
+        })
+        self.task_dashboard.add_event(event)
+        self.task_dashboard.update_metrics(self.task_scheduler.metrics())
 
     def _toggle_read_only(self) -> None:
         enabled = not self.permission_policy.read_only

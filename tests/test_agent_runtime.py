@@ -69,3 +69,36 @@ def test_runtime_bounds_tool_rounds(tmp_path):
     client = FakeClient([repeated, repeated])
     result = AgentRuntime(client, registry, max_tool_rounds=2).run("local-model", [{"role": "user", "content": "loop"}])
     assert "tool-call limit" in result
+
+
+def test_runtime_executes_model_tool_calls_through_scheduler(tmp_path):
+    from desktop_agent.agent.scheduler import TaskScheduler, TaskState
+
+    seen = []
+    events = []
+    registry = ToolRegistry(PermissionPolicy(), AuditLog(tmp_path / "audit.db"))
+    registry.register(ToolSpec(
+        "read_value", "Read a value", RiskLevel.READ_ONLY,
+        lambda key: seen.append(key) or {"value": key},
+        {"type": "object", "properties": {"key": {"type": "string"}},
+         "required": ["key"], "additionalProperties": False},
+    ))
+    client = FakeClient([
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"function": {"name": "read_value", "arguments": {"key": "dashboard"}}}
+        ]},
+        {"role": "assistant", "content": "Read completed."},
+    ])
+    scheduler = TaskScheduler(registry, event_callback=events.append)
+    try:
+        answer = AgentRuntime(client, registry, scheduler=scheduler).run(
+            "local-model", [{"role": "user", "content": "read"}]
+        )
+        assert answer == "Read completed."
+        assert seen == ["dashboard"]
+        assert {event.state for event in events} >= {
+            TaskState.QUEUED, TaskState.RUNNING, TaskState.COMPLETED,
+        }
+        assert scheduler.metrics().completed_plans == 1
+    finally:
+        scheduler.shutdown()

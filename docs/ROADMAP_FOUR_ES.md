@@ -141,3 +141,15 @@ Implemented on `feat/local-desktop-agent`:
 - Auto-routing option in the model selector; no model downloads or cloud routing.
 
 Still outstanding: guided benchmark and quality-rating UI, robust VRAM estimates for unloaded models, measured cold/warm load and token-throughput benchmarks, scheduler concurrency adaptation, context-window configuration passed to Ollama, and hardware acceptance on the target RTX 4080 system. Metadata-only rankings remain provisional until benchmark measurements exist.
+
+
+### Workstream 10 — Task dashboard (initial implementation)
+
+Implemented on feat/task-dashboard:
+
+- Added a dockable Qt dashboard with a bounded session event table and scheduler metrics.
+- Model-requested tool calls are submitted as one-step plans through the existing scheduler, so the live UI reflects actual execution rather than synthetic chat activity.
+- Displays queued/running/completed/denied/failed/cancelled/timed-out/skipped states, tool descriptions, timestamps, durations, and pending approval state.
+- Scheduler events cross a Qt signal bridge before touching widgets; the same events are written to the local audit stream.
+
+Still outstanding: model-generated multi-step plan preview/edit/approval, user-facing cancellation controls, durable task history, richer failure/recovery presentation, resource telemetry, and interactive Windows/Ollama acceptance. This is the first live monitoring surface, not completion of the full task-workspace vision.
