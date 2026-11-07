@@ -191,7 +191,7 @@ class TaskScheduler:
         failed_status = "completed"
         try:
             for step in plan.steps:
-                self._emit(plan_id, step.step_id, TaskState.QUEUED)
+                self._emit(plan_id, step.step_id, TaskState.QUEUED, detail=f"{step.call.tool_name}: {step.description}")
             while pending or running:
                 if cancel.is_set():
                     failed_status = "cancelled"
@@ -205,7 +205,7 @@ class TaskScheduler:
                     sid = ready.pop(0)
                     pending.remove(sid)
                     step = steps[sid]
-                    self._emit(plan_id, sid, TaskState.RUNNING)
+                    self._emit(plan_id, sid, TaskState.RUNNING, detail=f"{steps[sid].call.tool_name}: {steps[sid].description}")
                     future = self._tool_pool.submit(self._invoke, step, plan_id, cancel, deadline)
                     running[future] = sid
 
