@@ -88,3 +88,25 @@ def test_missing_capability_and_sensitive_risk_share_one_approval(tmp_path):
     assert "Missing capabilities" in approvals[0][1]
     assert "sensitive action" in approvals[0][1]
     assert registry.capability_policy.missing((capability,)) == (capability,)
+
+
+def test_capability_revoked_during_risk_approval_blocks_execution(tmp_path):
+    executed = []
+    capability = Capability("desktop", frozenset({"interact"}), "window")
+    capability_policy = CapabilityPolicy((capability,))
+    def approve(*_):
+        capability_policy.revoke(capability)
+        return True
+    registry = ToolRegistry(
+        PermissionPolicy(), AuditLog(tmp_path / "revoked-during-approval.db"),
+        approve, capability_policy=capability_policy,
+    )
+    registry.register(ToolSpec(
+        "click", "Click a control", RiskLevel.SENSITIVE,
+        lambda: executed.append(True),
+        {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+        (capability,),
+    ))
+    with pytest.raises(PermissionError, match="revoked"):
+        registry.execute(ToolCall("click"))
+    assert executed == []
