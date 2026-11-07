@@ -127,75 +127,80 @@ class ToolRegistry:
         if spec is None:
             raise KeyError(f"Unknown tool: {call.tool_name}")
         arguments = self._validate_arguments(spec, call.arguments)
+
+        # Combine capability and risk requirements into one approval decision.
         missing_capabilities = self.capability_policy.missing(spec.capabilities)
-        capability_approved = False
+        policy = self.policy.evaluate(spec.name, spec.risk)
+        if policy.decision is Decision.DENY:
+            self.audit_log.record(
+                tool_name=spec.name, application=call.application, risk=spec.risk.name,
+                decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
+                detail=policy.explanation,
+            )
+            raise PermissionError(policy.explanation)
+
+        approval_reasons: list[str] = []
         if missing_capabilities:
-            capability_reason = "Missing capabilities: " + ", ".join(
-                f"{cap.resource}:{','.join(sorted(cap.actions))}@{cap.scope}"
-                for cap in missing_capabilities
+            approval_reasons.append(
+                "Missing capabilities: " + ", ".join(
+                    f"{cap.resource}:{','.join(sorted(cap.actions))}@{cap.scope}"
+                    for cap in missing_capabilities
+                )
             )
-            approved_capability = bool(
+        if policy.decision is Decision.APPROVAL_REQUIRED:
+            approval_reasons.append(call.reason or policy.explanation)
+
+        approved_once = False
+        if approval_reasons:
+            reason = " | ".join(approval_reasons)
+            approved_once = bool(
                 self.approval_callback
-                and self.approval_callback(spec.name, capability_reason, arguments)
+                and self.approval_callback(spec.name, reason, arguments)
             )
-            if not approved_capability:
+            if not approved_once:
                 self.audit_log.record(
                     tool_name=spec.name, application=call.application, risk=spec.risk.name,
                     decision=Decision.DENY.value, outcome="denied", arguments=arguments,
-                    detail="Required capability has not been granted.",
+                    detail="User did not approve the complete action and capability request.",
                 )
-                raise PermissionError("Required capability has not been granted.")
-            capability_approved = True
-        policy = self.policy.evaluate(spec.name, spec.risk)
-        decision = policy.decision
-        if decision is Decision.APPROVAL_REQUIRED:
-            approved = bool(
-                self.approval_callback
-                and self.approval_callback(spec.name, call.reason or spec.description, arguments)
-            )
-            if approved:
-                policy = self.policy.evaluate(spec.name, spec.risk)
-                decision = Decision.DENY if policy.decision is Decision.DENY else Decision.ALLOW
-            else:
-                decision = Decision.DENY
-        if decision is not Decision.ALLOW:
-            outcome = "blocked" if policy.decision is Decision.DENY else "denied"
-            self.audit_log.record(
-                tool_name=spec.name, application=call.application, risk=spec.risk.name,
-                decision=decision.value, outcome=outcome, arguments=arguments,
-                detail=policy.explanation,
-            )
-            raise PermissionError(policy.explanation if outcome == "blocked" else "User did not approve this action.")
-        # Validate and re-check policy immediately before invoking the side effect.
+                raise PermissionError("User did not approve this action.")
+
+        # Revalidate inputs and re-check current safety state immediately before
+        # invoking the handler. A one-shot capability approval is not persisted.
         arguments = self._validate_arguments(spec, arguments)
-        missing_capabilities = self.capability_policy.missing(spec.capabilities)
         final_policy = self.policy.evaluate(spec.name, spec.risk)
-        if missing_capabilities and not capability_approved:
+        final_missing = self.capability_policy.missing(spec.capabilities)
+        if final_policy.decision is Decision.DENY:
+            detail = final_policy.explanation
+            outcome = "blocked"
+        elif final_missing and not approved_once:
+            detail = "Required capability was revoked before execution."
+            outcome = "blocked"
+        elif final_policy.decision is Decision.APPROVAL_REQUIRED and not approved_once:
+            detail = final_policy.explanation
+            outcome = "blocked"
+        else:
+            detail = ""
+            outcome = ""
+
+        if outcome:
             self.audit_log.record(
                 tool_name=spec.name, application=call.application, risk=spec.risk.name,
-                decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
-                detail="Required capability was revoked before execution.",
+                decision=Decision.DENY.value, outcome=outcome, arguments=arguments,
+                detail=detail,
             )
-            raise PermissionError("Required capability was revoked before execution.")
-        if final_policy.decision is Decision.DENY or (
-            final_policy.decision is Decision.APPROVAL_REQUIRED and decision is not Decision.ALLOW
-        ):
-            self.audit_log.record(
-                tool_name=spec.name, application=call.application, risk=spec.risk.name,
-                decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
-                detail=final_policy.explanation,
-            )
-            raise PermissionError(final_policy.explanation)
+            raise PermissionError(detail)
+
         try:
             result = spec.handler(**arguments)
         except Exception as exc:
             self.audit_log.record(
                 tool_name=spec.name, application=call.application, risk=spec.risk.name,
-                decision=decision.value, outcome="error", arguments=arguments, detail=str(exc),
+                decision=Decision.ALLOW.value, outcome="error", arguments=arguments, detail=str(exc),
             )
             raise
         self.audit_log.record(
             tool_name=spec.name, application=call.application, risk=spec.risk.name,
-            decision=decision.value, outcome="success", arguments=arguments,
+            decision=Decision.ALLOW.value, outcome="success", arguments=arguments,
         )
         return result
