@@ -50,7 +50,9 @@ class ToolRegistry:
                 # Safety modes may change while the confirmation dialog is open.
                 # Re-check centrally after approval and immediately before execution.
                 policy = self.policy.evaluate(spec.name, spec.risk)
-                decision = policy.decision
+                decision = (
+                    Decision.DENY if policy.decision is Decision.DENY else Decision.ALLOW
+                )
             else:
                 decision = Decision.DENY
         if decision is not Decision.ALLOW:
