@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal, Qt
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QComboBox, QDockWidget, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPushButton, QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -23,7 +23,7 @@ from desktop_agent.agent.model_router import ModelRouter, ModelBenchmarkStore, p
 from desktop_agent.agent.resources import ResourceMonitor, ResourceBudgetManager
 from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.tools import register_desktop_tools
-from desktop_agent.ui.approval import ApprovalBroker
+from desktop_agent.ui.approval import ApprovalBroker\nfrom desktop_agent.ui.task_dashboard import TaskDashboard
 from desktop_agent.desktop.environment import EnvironmentStateGraph, EnvironmentStateService
 from desktop_agent.desktop.environment_tools import register_environment_tools
 
@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.desktop_tools_error = str(exc)
                 self.audit_log.record_event("desktop_tools_unavailable", {"error": str(exc)})
-        self.environment_service = EnvironmentStateService(self.environment_graph, window_observer)
+        self.environment_service = EnvironmentStateService(self.environment_graph, window_observer)\n        self.task_dashboard = TaskDashboard(self)\n        self.task_dock = QDockWidget("Task Dashboard", self)\n        self.task_dock.setObjectName("taskDashboardDock")\n        self.task_dock.setWidget(self.task_dashboard)\n        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.task_dock)\n        self.task_event_bridge.event_received.connect(self._on_task_event)\n        self.task_event_bridge.approval_received.connect(self.task_dashboard.set_approval)\n        self.approval_broker.approval_state.connect(self.task_event_bridge.approval_received.emit)
         register_environment_tools(self.tool_registry, self.environment_service)
         self._threads: list[QThread] = []
         self.setWindowTitle("Local Desktop AI Agent")
@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         self.input.returnPressed.connect(self.send_message)
         self.refresh_models()
 
-    def _toggle_read_only(self) -> None:
+    def _on_task_event(self, event) -> None:\n        self.audit_log.record_event("task_state", {\n            "plan_id": event.plan_id, "step_id": event.step_id,\n            "state": event.state.value, "timestamp": event.timestamp,\n            "duration_seconds": event.duration_seconds, "detail": event.detail,\n        })\n        self.task_dashboard.add_event(event)\n        self.task_dashboard.update_metrics(self.task_scheduler.metrics())\n\n    def _toggle_read_only(self) -> None:
         enabled = not self.permission_policy.read_only
         self.permission_policy.set_read_only(enabled)
         self.audit_log.record_event("read_only_mode_changed", {"enabled": enabled})
