@@ -127,3 +127,17 @@ Implemented on `feat/local-desktop-agent`:
 - Desktop shell records task-state events in the local audit stream.
 
 Still outstanding: model-generated plan construction and preview, live task dashboard, robust shutdown coordination for long-running handlers, per-tool cancellation, resource metrics, and executed Windows/Ollama acceptance. This is an initial scheduling service, not hard preemption or a complete task dashboard.
+
+
+### Workstream 6 — Local model routing and adaptive resource management (initial implementation)
+
+Implemented on `feat/local-desktop-agent`:
+
+- Local Ollama metadata discovery through `/api/show` and loaded-model memory through `/api/ps`.
+- Capability-aware routing for chat, tool use, vision, and code/completion; explicit model selection always wins.
+- Persistent local benchmark measurements for latency and externally evaluated quality scores; no prompts or responses are stored.
+- Local RAM/disk monitoring and optional NVIDIA VRAM/GPU discovery through `nvidia-smi`.
+- Resource-aware session context budgeting and low-memory/VRAM warnings.
+- Auto-routing option in the model selector; no model downloads or cloud routing.
+
+Still outstanding: guided benchmark and quality-rating UI, robust VRAM estimates for unloaded models, measured cold/warm load and token-throughput benchmarks, scheduler concurrency adaptation, context-window configuration passed to Ollama, and hardware acceptance on the target RTX 4080 system. Metadata-only rankings remain provisional until benchmark measurements exist.
