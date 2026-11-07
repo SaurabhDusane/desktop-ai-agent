@@ -49,3 +49,23 @@ def test_audit_redacts_sensitive_argument_keys(tmp_path):
     assert redact({"api_key": "secret-value", "label": "safe"}) == {
         "api_key": "[REDACTED]", "label": "safe"
     }
+
+
+def test_emergency_stop_during_approval_prevents_execution(tmp_path):
+    executed = []
+    policy = PermissionPolicy()
+    audit = AuditLog(tmp_path / "audit.sqlite3")
+
+    def approve_then_stop(*args):
+        policy.activate_emergency_stop()
+        return True
+
+    registry = ToolRegistry(policy, audit, approve_then_stop)
+    registry.register(ToolSpec(
+        "change_setting", "Change a setting", RiskLevel.SYSTEM_CHANGE,
+        lambda: executed.append(True),
+    ))
+    with pytest.raises(PermissionError):
+        registry.execute(ToolCall("change_setting"))
+    assert executed == []
+    assert audit.recent_events()[0]["outcome"] == "blocked"
