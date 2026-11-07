@@ -153,3 +153,15 @@ Implemented on feat/task-dashboard:
 - Scheduler events cross a Qt signal bridge before touching widgets; the same events are written to the local audit stream.
 
 Still outstanding: model-generated multi-step plan preview/edit/approval, user-facing cancellation controls, durable task history, richer failure/recovery presentation, resource telemetry, and interactive Windows/Ollama acceptance. This is the first live monitoring surface, not completion of the full task-workspace vision.
+
+
+### Workstream 8 — Multimodal perception broker (initial implementation)
+
+Implemented on `feat/multimodal-perception`:
+
+- Added a bounded perception broker and Windows primary-display capture backend. Capture is on demand only, resized to at most 1600×1000, limited to 4 MiB, and held in memory only.
+- Registered one screen-description tool through the central registry with a dedicated `desktop:capture@primary_display` capability and `SENSITIVE` risk. Every invocation requires fresh approval; read-only mode blocks capture.
+- Added Ollama image-message support and capability-aware selection of an installed local vision model. The tool fails closed if no installed model advertises vision; no model download or cloud fallback occurs.
+- Added fake-backend tests for on-demand capture, bounds, approval, denial, and capability behavior.
+
+Still outstanding: OCR engine and region/window-specific capture, user-visible capture preview and retention controls, camera/image upload sources, adversarial visual prompt-injection evaluation, performance/VRAM acceptance on the target RTX 4080, and interactive Windows testing with an installed Ollama vision model. This is an initial screen-vision path, not complete multimodal perception.
