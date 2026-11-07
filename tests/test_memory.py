@@ -4,7 +4,7 @@ from desktop_agent.agent.memory import RepetitionMemory, SessionContext
 
 
 def test_session_context_keeps_recent_messages_and_summarizes_old(tmp_path):
-    context = SessionContext(max_context_chars=50, keep_recent_messages=2)
+    context = SessionContext(max_context_chars=49, keep_recent_messages=2)
     context.add("user", "old question")
     context.add("assistant", "old answer")
     context.add("user", "recent question")
