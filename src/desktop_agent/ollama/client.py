@@ -23,6 +23,33 @@ class OllamaClient:
             raise OllamaError(f"Could not reach Ollama at {self._base_url}: {exc}") from exc
         return sorted(model["name"] for model in payload.get("models", []) if model.get("name"))
 
+
+    def model_details(self, model: str) -> dict[str, Any]:
+        """Read local Ollama model metadata without loading or modifying the model."""
+        try:
+            response = httpx.post(f"{self._base_url}/api/show", json={"model": model},
+                                  timeout=15.0)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise OllamaError(f"Could not inspect local model {model}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise OllamaError("Ollama returned invalid model metadata.")
+        return payload
+
+    def running_models(self) -> list[dict[str, Any]]:
+        """Return Ollama's currently loaded models and reported memory sizes."""
+        try:
+            response = httpx.get(f"{self._base_url}/api/ps", timeout=10.0)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise OllamaError(f"Could not inspect running Ollama models: {exc}") from exc
+        models = payload.get("models", []) if isinstance(payload, dict) else []
+        if not isinstance(models, list):
+            raise OllamaError("Ollama returned invalid running-model data.")
+        return [item for item in models if isinstance(item, dict)]
+
     def summarize(self, model: str, transcript: str) -> str:
         return self.chat(model, [
             {"role": "system", "content": "You are a concise conversation-context compressor. Return only factual reusable context."},
