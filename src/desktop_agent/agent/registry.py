@@ -5,6 +5,7 @@ import inspect
 from typing import Any, Callable
 
 from desktop_agent.agent.audit import AuditLog
+from desktop_agent.agent.capabilities import Capability, CapabilityPolicy
 from desktop_agent.agent.models import RiskLevel, ToolCall
 from desktop_agent.agent.policy import ApprovalCallback, Decision, PermissionPolicy
 
@@ -16,16 +17,19 @@ class ToolSpec:
     risk: RiskLevel
     handler: Callable[..., Any]
     input_schema: dict[str, Any] | None = None
+    capabilities: tuple[Capability, ...] = ()
 
 
 class ToolRegistry:
     """The only supported path from model-proposed calls to side effects."""
 
     def __init__(self, policy: PermissionPolicy, audit_log: AuditLog,
-                 approval_callback: ApprovalCallback | None = None) -> None:
+                 approval_callback: ApprovalCallback | None = None,
+                 capability_policy: CapabilityPolicy | None = None) -> None:
         self.policy = policy
         self.audit_log = audit_log
         self.approval_callback = approval_callback
+        self.capability_policy = capability_policy or CapabilityPolicy()
         self._tools: dict[str, ToolSpec] = {}
 
     def register(self, spec: ToolSpec) -> None:
@@ -103,6 +107,23 @@ class ToolRegistry:
         if spec is None:
             raise KeyError(f"Unknown tool: {call.tool_name}")
         arguments = self._validate_arguments(spec, call.arguments)
+        missing_capabilities = self.capability_policy.missing(spec.capabilities)
+        if missing_capabilities:
+            capability_reason = "Missing capabilities: " + ", ".join(
+                f"{cap.resource}:{','.join(sorted(cap.actions))}@{cap.scope}"
+                for cap in missing_capabilities
+            )
+            approved_capability = bool(
+                self.approval_callback
+                and self.approval_callback(spec.name, capability_reason, arguments)
+            )
+            if not approved_capability or self.capability_policy.missing(spec.capabilities):
+                self.audit_log.record(
+                    tool_name=spec.name, application=call.application, risk=spec.risk.name,
+                    decision=Decision.DENY.value, outcome="denied", arguments=arguments,
+                    detail="Required capability has not been granted.",
+                )
+                raise PermissionError("Required capability has not been granted.")
         policy = self.policy.evaluate(spec.name, spec.risk)
         decision = policy.decision
         if decision is Decision.APPROVAL_REQUIRED:
@@ -125,7 +146,15 @@ class ToolRegistry:
             raise PermissionError(policy.explanation if outcome == "blocked" else "User did not approve this action.")
         # Validate and re-check policy immediately before invoking the side effect.
         arguments = self._validate_arguments(spec, arguments)
+        missing_capabilities = self.capability_policy.missing(spec.capabilities)
         final_policy = self.policy.evaluate(spec.name, spec.risk)
+        if missing_capabilities:
+            self.audit_log.record(
+                tool_name=spec.name, application=call.application, risk=spec.risk.name,
+                decision=Decision.DENY.value, outcome="blocked", arguments=arguments,
+                detail="Required capability was revoked before execution.",
+            )
+            raise PermissionError("Required capability was revoked before execution.")
         if final_policy.decision is Decision.DENY or (
             final_policy.decision is Decision.APPROVAL_REQUIRED and decision is not Decision.ALLOW
         ):
