@@ -81,3 +81,21 @@ The approval callback must be connected to a real user confirmation UI before en
 8. Check the SQLite audit log for allowed, denied, and failed actions.
 
 UI Automation availability and control behavior vary by application, integrity level, and Windows session. Elevated applications may not be controllable from a non-elevated agent. No attempt is made to bypass those boundaries.
+
+### Interactive approval dialog
+
+The desktop launcher now creates a central tool registry and an approval broker.
+When a registered tool requests approval from a worker thread, the broker presents
+a native Qt confirmation dialog on the UI thread. The dialog shows the tool name,
+reason, and structured arguments; **No** is the default choice. If the request
+times out or the UI cannot complete the confirmation, the action is denied.
+
+On Windows, UIA tools are registered automatically when the optional dependency
+and desktop session are available. Failure to initialize UI Automation does not
+prevent the chat window from starting. The registry is currently infrastructure:
+the Ollama chat loop does not yet ask the model to plan or invoke tools, so this
+does not enable model-directed desktop control by itself.
+
+The approval dialog is not a substitute for reviewing the requested action.
+In particular, inspect text-entry arguments before approving them because they
+may be submitted by the target application.
