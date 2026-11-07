@@ -42,3 +42,14 @@ def test_repetition_observations_are_not_persisted_before_threshold(tmp_path):
 def test_failed_or_unobserved_actions_are_not_learned(tmp_path):
     memory = RepetitionMemory(tmp_path / "memory.sqlite3")
     assert memory.patterns() == []
+
+
+def test_build_does_not_mutate_full_latest_message(tmp_path):
+    context = SessionContext(max_context_chars=12, keep_recent_messages=2)
+    context.add("user", "first")
+    context.add("assistant", "second")
+    original = "this is a very long latest request"
+    context.add("user", original)
+    result = context.build(lambda _: "")
+    assert len(result[-1]["content"]) <= 12
+    assert context._messages[-1]["content"] == original
