@@ -43,7 +43,7 @@ class TaskDashboard(QWidget):
             event.plan_id[:12], event.step_id, event.state.value,
             datetime.fromtimestamp(event.timestamp).strftime("%H:%M:%S"),
             f"{event.duration_seconds:.3f}s" if event.duration_seconds is not None else "—",
-            event.detail or "—",
+            event.detail or (self.table.item(row, 5).text() if self.table.item(row, 5) else "—"),
         )
         for column, value in enumerate(values):
             self.table.setItem(row, column, QTableWidgetItem(value))
