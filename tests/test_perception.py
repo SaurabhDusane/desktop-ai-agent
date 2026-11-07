@@ -4,7 +4,7 @@ import pytest
 
 from desktop_agent.agent.audit import AuditLog
 from desktop_agent.agent.capabilities import Capability, CapabilityPolicy
-from desktop_agent.agent.models import RiskLevel, ToolCall
+from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
 from desktop_agent.desktop.perception import (
