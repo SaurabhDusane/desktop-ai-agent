@@ -27,6 +27,8 @@ from desktop_agent.ui.approval import ApprovalBroker
 from desktop_agent.ui.task_dashboard import TaskDashboard
 from desktop_agent.desktop.environment import EnvironmentStateGraph, EnvironmentStateService
 from desktop_agent.desktop.environment_tools import register_environment_tools
+from desktop_agent.desktop.perception import PerceptionBroker, PrimaryDisplayCapture
+from desktop_agent.desktop.perception_tools import register_perception_tools
 
 
 class Worker(QObject):
@@ -90,6 +92,16 @@ class MainWindow(QMainWindow):
                     )
                 self.desktop_tools_available = True
                 self.audit_log.record_event("desktop_tools_registered")
+                perception = PerceptionBroker(
+                    PrimaryDisplayCapture(),
+                    self._analyze_primary_screen,
+                )
+                register_perception_tools(self.tool_registry, perception)
+                self.audit_log.record_event("screen_perception_registered", {
+                    "capture": "on_demand_primary_display",
+                    "retention": "memory_only",
+                    "analysis": "local_ollama_vision",
+                })
             except Exception as exc:
                 self.desktop_tools_error = str(exc)
                 self.audit_log.record_event("desktop_tools_unavailable", {"error": str(exc)})
@@ -153,6 +165,27 @@ class MainWindow(QMainWindow):
         self.send_button.clicked.connect(self.send_message)
         self.input.returnPressed.connect(self.send_message)
         self.refresh_models()
+
+    def _analyze_primary_screen(self, image: bytes) -> str:
+        """Select an installed vision model and analyze the image locally."""
+        vision_models = [
+            profile.name for profile in self.model_router.profiles()
+            if "vision" in profile.capabilities and profile.name in self.installed_models
+        ]
+        if not vision_models:
+            raise RuntimeError(
+                "No installed Ollama model advertises vision capability. "
+                "Install a local vision model, then refresh the model list."
+            )
+        snapshot = self.resource_monitor.snapshot()
+        decision = self.model_router.choose(
+            vision_models, task="vision", available_vram_bytes=snapshot.free_vram_bytes
+        )
+        self.audit_log.record_event("screen_perception_model_selected", {
+            "model": decision.model, "reason": decision.reason,
+            "measured": decision.measured,
+        })
+        return self.client.describe_image(decision.model, image)[:4000]
 
     def _on_task_event(self, event) -> None:
         self.audit_log.record_event("task_state", {
