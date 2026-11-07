@@ -21,6 +21,13 @@ class OllamaClient:
             raise OllamaError(f"Could not reach Ollama at {self._base_url}: {exc}") from exc
         return sorted(model["name"] for model in payload.get("models", []) if model.get("name"))
 
+    def summarize(self, model: str, transcript: str) -> str:
+        """Summarize session context using the configured local Ollama instance."""
+        return self.chat(model, [
+            {"role": "system", "content": "You are a concise conversation-context compressor. Return only factual reusable context."},
+            {"role": "user", "content": transcript},
+        ])
+
     def chat(self, model: str, messages: list[dict[str, str]]) -> str:
         if not model.strip():
             raise OllamaError("Select an Ollama model before sending a message.")
