@@ -78,7 +78,11 @@ class EnvironmentStateGraph:
             title = item.get("title")
             pid = item.get("process_id")
             handle = item.get("handle")
-            if not isinstance(title, str) or not isinstance(pid, int) or not isinstance(handle, int):
+            if (
+                not isinstance(title, str)
+                or not isinstance(pid, int) or isinstance(pid, bool)
+                or not isinstance(handle, int) or isinstance(handle, bool)
+            ):
                 continue
             title = title[:200]
             if pid < 0 or handle < 0:
