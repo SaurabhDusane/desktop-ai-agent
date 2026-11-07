@@ -92,9 +92,7 @@ times out or the UI cannot complete the confirmation, the action is denied.
 
 On Windows, UIA tools are registered automatically when the optional dependency
 and desktop session are available. Failure to initialize UI Automation does not
-prevent the chat window from starting. The registry is currently infrastructure:
-the Ollama chat loop does not yet ask the model to plan or invoke tools, so this
-does not enable model-directed desktop control by itself.
+prevent the chat window from starting. The Ollama chat loop now exposes only registered tools through the bounded agent runtime. Application adapter operations are registered as ordinary typed tools and still pass through the same risk, capability, approval, and audit checks.
 
 The approval dialog is not a substitute for reviewing the requested action.
 In particular, inspect text-entry arguments before approving them because they
@@ -181,3 +179,18 @@ remain in force, including read-only mode, emergency stop, and fresh approval
 for sensitive actions. Filesystem path containment remains enforced separately
 by SafePathPolicy; future file tools must combine path validation with a
 filesystem capability and must never trust a model-provided path.
+
+
+## Application adapter framework
+
+Application integrations use a shared contract in \`desktop_agent.desktop.adapters\`:
+
+- Each adapter declares a stable adapter ID, display name, platform, and description.
+- Each adapter publishes a fixed list of named operations with closed input schemas, risk levels, and required capabilities.
+- \`AdapterRegistry\` rejects duplicate adapter IDs, duplicate/empty operation names, and non-closed schemas. It dispatches only declared operations and rejects unknown or missing arguments.
+- \`register_adapter_tools\` exposes declared operations through the central \`ToolRegistry\`; it does not provide a direct model-to-adapter path.
+- The first implementation is \`WindowsDesktopAdapter\`, wrapping the existing conservative UI Automation implementation. Its operations are window listing, bounded control inspection, exact-window focus, unique-control click, and bounded text entry.
+
+The Windows adapter is registered under the \`windows_desktop\` ID. Tool names use the form \`windows_desktop_<operation>\`. Every operation retains its risk and capability requirements: observation is read-only, focus is system-changing, and click/text entry require fresh approval. The one-time approval dialog now combines missing-capability and risk-policy reasons into a single confirmation rather than prompting twice for the same invocation.
+
+Future browser, IDE, Office, and file adapters should implement the same contract, declare narrowly scoped capabilities, and keep their own application-specific validation. The framework does not imply that those integrations are implemented yet. Adapter registration is trusted application code; model output cannot register an adapter or add operations at runtime.
