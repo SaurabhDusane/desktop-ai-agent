@@ -120,6 +120,7 @@ class MainWindow(QMainWindow):
 
     def _emergency_stop(self) -> None:
         self.permission_policy.activate_emergency_stop()
+        self.tool_registry.revoke_all_capabilities()
         self.audit_log.record_event("emergency_stop_activated")
         self.emergency_button.setEnabled(False)
         self.read_only_button.setEnabled(False)
