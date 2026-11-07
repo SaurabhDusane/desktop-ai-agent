@@ -167,7 +167,7 @@ class MainWindow(QMainWindow):
         if not model:
             self._show_error("No model selected. Install a model in Ollama, then refresh.")
             return
-        self.audit_log.record_event("user_message", {"model": model, "content": prompt})
+        self.audit_log.record_event("user_message", {"model": model, "character_count": len(prompt)})
         self.session_context.add("user", prompt)
         self.input.clear()
         self.send_button.setEnabled(False)
@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
 
         def received(answer: str) -> None:
             self.session_context.add("assistant", answer)
-            self.audit_log.record_event("assistant_response", {"model": model, "content": answer})
+            self.audit_log.record_event("assistant_response", {"model": model, "character_count": len(answer)})
             self.chat_view.append(f"<b>Assistant:</b> {self._escape(answer)}")
             self.send_button.setEnabled(True)
 
