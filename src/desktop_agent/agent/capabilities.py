@@ -55,7 +55,6 @@ class CapabilityPolicy:
     def revoke_all(self) -> None:
         with self._lock:
             self._grants.clear()
-            self._revoked.update(self._baseline)
 
     def grants(self) -> tuple[Capability, ...]:
         with self._lock:
