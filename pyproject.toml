@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-desktop-agent"
+version = "0.1.0"
+description = "A local-first Windows desktop assistant powered by Ollama."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = ["PySide6>=6.7,<7", "httpx>=0.27,<1", "python-dotenv>=1.0,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.5,<1"]
+windows = ["pywinauto>=0.6.8,<1"]
+
+[project.scripts]
+desktop-agent = "desktop_agent.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Keep CI focused on correctness-oriented Python diagnostics. Broader
+# modernization/security rules can be adopted incrementally with dedicated fixes.
+select = ["E4", "E7", "E9", "F"]
