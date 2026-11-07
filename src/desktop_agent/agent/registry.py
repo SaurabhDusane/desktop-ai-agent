@@ -46,7 +46,13 @@ class ToolRegistry:
                 self.approval_callback
                 and self.approval_callback(spec.name, call.reason or spec.description, call.arguments)
             )
-            decision = Decision.ALLOW if approved else Decision.DENY
+            if approved:
+                # Safety modes may change while the confirmation dialog is open.
+                # Re-check centrally after approval and immediately before execution.
+                policy = self.policy.evaluate(spec.name, spec.risk)
+                decision = policy.decision
+            else:
+                decision = Decision.DENY
         if decision is not Decision.ALLOW:
             outcome = "blocked" if policy.decision is Decision.DENY else "denied"
             self.audit_log.record(
