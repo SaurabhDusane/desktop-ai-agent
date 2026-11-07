@@ -1,20 +1,44 @@
 """Bounded model/tool loop. Model output is intent, never an execution authority."""
 
 import json
+import uuid
 from typing import Any
 
-from desktop_agent.agent.models import ToolCall
+from desktop_agent.agent.models import AgentPlan, PlanStep, ToolCall
 from desktop_agent.agent.registry import ToolRegistry
+from desktop_agent.agent.scheduler import TaskScheduler, SchedulerFullError
 from desktop_agent.ollama.client import OllamaClient, OllamaError
 
 
 class AgentRuntime:
-    def __init__(self, client: OllamaClient, registry: ToolRegistry, max_tool_rounds: int = 4) -> None:
+    def __init__(
+        self, client: OllamaClient, registry: ToolRegistry, max_tool_rounds: int = 4,
+        scheduler: TaskScheduler | None = None,
+    ) -> None:
         if not 1 <= max_tool_rounds <= 8:
             raise ValueError("max_tool_rounds must be between 1 and 8")
         self.client = client
         self.registry = registry
         self.max_tool_rounds = max_tool_rounds
+        self.scheduler = scheduler
+
+    def _execute_tool(self, call: ToolCall) -> Any:
+        if self.scheduler is None:
+            return self.registry.execute(call)
+        plan_id = uuid.uuid4().hex
+        plan = AgentPlan(
+            goal=f"Execute tool {call.tool_name}",
+            steps=(PlanStep("tool-call", f"{call.tool_name} · one model-requested action", call),),
+        )
+        handle = self.scheduler.submit(plan, plan_id, deadline_seconds=120.0)
+        result = handle.future.result(timeout=125.0)
+        if result.status != "completed":
+            step = result.steps[0] if result.steps else None
+            message = step.message if step and step.message else result.status
+            if result.status == "approval_required":
+                raise PermissionError(message)
+            raise RuntimeError(f"Scheduled tool action {result.status}: {message}")
+        return result.steps[0].output
 
     def run(self, model: str, messages: list[dict[str, Any]]) -> str:
         conversation = [dict(message) for message in messages]
@@ -34,7 +58,6 @@ class AgentRuntime:
                 if not isinstance(content, str):
                     raise OllamaError("Model returned an invalid final response.")
                 return content
-            # Preserve the assistant tool-call message in the protocol conversation.
             conversation.append(message)
             for item in calls:
                 if not isinstance(item, dict):
@@ -52,21 +75,18 @@ class AgentRuntime:
                     raise OllamaError("Model tool arguments must be a JSON object.")
                 call_id = item.get("id")
                 try:
-                    result = self.registry.execute(ToolCall(
-                        tool_name=function["name"],
-                        arguments=raw_args,
+                    result = self._execute_tool(ToolCall(
+                        tool_name=function["name"], arguments=raw_args,
                         reason="Requested by the local assistant for the current user task.",
                     ))
                     payload = {"ok": True, "result": result}
-                except (PermissionError, KeyError, ValueError) as exc:
+                except (PermissionError, KeyError, ValueError, SchedulerFullError) as exc:
                     payload = {"ok": False, "error": str(exc)}
                 except Exception:
-                    # Do not expose tracebacks, local paths, or exception internals to the model.
                     payload = {"ok": False, "error": "Tool execution failed. No success is implied."}
                 conversation.append({
                     "role": "tool",
                     "content": json.dumps(payload, ensure_ascii=False, default=str)[:8000],
                     **({"tool_name": function["name"]} if call_id is None else {"tool_call_id": call_id}),
                 })
-        # Do not silently continue autonomous execution after the bounded tool budget.
         return "I reached the tool-call limit for this turn. Please review the actions completed so far before continuing."
