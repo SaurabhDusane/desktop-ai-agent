@@ -89,3 +89,13 @@ def test_environment_tools_are_registered_through_central_registry(tmp_path):
         "environment_query", {"text": "editor", "kind": "window"}
     ))
     assert len(query["matches"]) == 1
+
+
+def test_graph_marks_observation_stale_after_freshness_window():
+    ticks = [10.0]
+    graph = EnvironmentStateGraph(stale_after_seconds=5, clock=lambda: ticks[0])
+    graph.replace_windows(windows())
+    assert graph.is_stale is False
+    ticks[0] = 16.0
+    assert graph.is_stale is True
+    assert graph.snapshot()["stale"] is True
