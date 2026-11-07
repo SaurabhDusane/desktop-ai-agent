@@ -126,7 +126,6 @@ The audit log includes chat content so it can contain sensitive personal informa
 - Filesystem restrictions are a reusable boundary helper, not yet wired to a general file-management tool (the agent currently has no general file-management tool).
 - Read-only mode and emergency stop are in-memory controls, not persistent policy configuration.
 - Prompt-injection isolation, Windows ACL hardening, protected audit export, backups/rollback, and a dedicated activity-log viewer remain future work.
-- The model chat loop still does not invoke desktop tools.
 
 
 ## Session context and local learning
@@ -194,3 +193,18 @@ Application integrations use a shared contract in \`desktop_agent.desktop.adapte
 The Windows adapter is registered under the \`windows_desktop\` ID. Tool names use the form \`windows_desktop_<operation>\`. Every operation retains its risk and capability requirements: observation is read-only, focus is system-changing, and click/text entry require fresh approval. The one-time approval dialog now combines missing-capability and risk-policy reasons into a single confirmation rather than prompting twice for the same invocation.
 
 Future browser, IDE, Office, and file adapters should implement the same contract, declare narrowly scoped capabilities, and keep their own application-specific validation. The framework does not imply that those integrations are implemented yet. Adapter registration is trusted application code; model output cannot register an adapter or add operations at runtime.
+
+
+## Environment state graph
+
+The desktop agent now has a bounded, in-memory environment graph for the current application session:
+
+- Nodes represent the current desktop workspace, observed application process IDs, and visible windows.
+- Edges describe workspace containment and application-to-window ownership.
+- Window metadata is limited to title, process ID, native handle, control type, visibility, source, and observation time. It does not collect document text, form values, screenshots, or keystrokes.
+- The graph is refreshed on demand through \`environment_refresh_desktop\`. On Windows, this calls the existing \`windows_desktop_list_windows\` tool through \`ToolRegistry\`, preserving central policy and audit.
+- \`environment_snapshot\` returns a bounded view; \`environment_query\` searches the current graph by metadata and optional node kind.
+- The graph replaces its previous desktop observation on refresh rather than accumulating stale window records. It reports generation, last-refresh time, and a stale flag (60-second freshness threshold).
+- Node, edge, query, and result limits are enforced. State is not written to disk and is discarded when the application exits.
+
+This is an initial desktop slice of the environment graph, not a complete inventory of files, browser tabs, projects, or application-internal state. Refresh is explicit/on-demand; no background screen or window monitoring is enabled. On non-Windows platforms, graph queries remain available but desktop refresh reports that the Windows observer is unavailable.
