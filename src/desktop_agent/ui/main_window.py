@@ -43,6 +43,11 @@ class Worker(QObject):
             self.failed.emit(str(exc))
 
 
+class TaskEventBridge(QObject):
+    event_received = Signal(object)
+    approval_received = Signal(str, bool)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -57,21 +62,18 @@ class MainWindow(QMainWindow):
             self.permission_policy, self.audit_log, self.approval_broker.approve
         )
         register_desktop_tools(self.tool_registry)
-        self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
-        self.model_router = ModelRouter(ModelBenchmarkStore(audit_path.parent / "model-benchmarks.sqlite3"))
+                self.model_router = ModelRouter(ModelBenchmarkStore(audit_path.parent / "model-benchmarks.sqlite3"))
         self.resource_monitor = ResourceMonitor()
         self.resource_budgets = ResourceBudgetManager()
         self.installed_models: list[str] = []
+        self.task_event_bridge = TaskEventBridge(self)
         self.task_scheduler = TaskScheduler(
             self.tool_registry,
             max_workers=3,
             max_queued_plans=4,
-            event_callback=lambda event: self.audit_log.record_event("task_state", {
-                "plan_id": event.plan_id, "step_id": event.step_id,
-                "state": event.state.value, "timestamp": event.timestamp,
-                "duration_seconds": event.duration_seconds, "detail": event.detail,
-            }),
+            event_callback=self.task_event_bridge.event_received.emit,
         )
+        self.agent_runtime = AgentRuntime(self.client, self.tool_registry, scheduler=self.task_scheduler)
         self.audit_log.record_event("application_started", {"platform": sys.platform})
         self.environment_graph = EnvironmentStateGraph()
         self.desktop_tools_available = False
