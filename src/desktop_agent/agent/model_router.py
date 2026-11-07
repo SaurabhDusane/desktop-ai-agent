@@ -1,7 +1,7 @@
 """Capability-aware local model selection backed by measured benchmark profiles."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 import sqlite3
 import time
@@ -148,7 +148,7 @@ def profile_from_ollama(name: str, details: dict, running: Iterable[dict] = ()) 
                         estimated_vram_bytes=vram, source="ollama_metadata")
 
 
-def benchmark_model(model: str, invoke: Callable[[str], str], prompt: str) -> tuple[float, str]:
+def benchmark_model(model: str, invoke: Callable[[str], str]) -> tuple[float, str]:
     """Measure one local inference request; caller evaluates answer quality separately."""
     started = time.perf_counter()
     answer = invoke(model)
