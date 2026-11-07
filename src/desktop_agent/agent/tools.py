@@ -4,6 +4,7 @@ import platform
 import subprocess
 
 from desktop_agent.agent.models import RiskLevel
+from desktop_agent.agent.capabilities import Capability
 from desktop_agent.agent.registry import ToolRegistry, ToolSpec
 
 
@@ -31,4 +32,5 @@ def register_desktop_tools(registry: ToolRegistry) -> None:
         description="Launch a known Windows application by catalog ID (not an arbitrary command).",
         risk=RiskLevel.SYSTEM_CHANGE,
         handler=launch_registered_app,
+        capabilities=(Capability('application', frozenset({'launch'}), 'catalog'),),
     ))
