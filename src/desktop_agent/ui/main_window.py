@@ -18,6 +18,7 @@ from desktop_agent.agent.memory import RepetitionMemory, SessionContext
 from desktop_agent.agent.policy import PermissionPolicy
 from desktop_agent.agent.registry import ToolRegistry
 from desktop_agent.agent.runtime import AgentRuntime
+from desktop_agent.agent.scheduler import TaskScheduler
 from desktop_agent.agent.models import ToolCall
 from desktop_agent.agent.tools import register_desktop_tools
 from desktop_agent.ui.approval import ApprovalBroker
@@ -55,6 +56,16 @@ class MainWindow(QMainWindow):
         )
         register_desktop_tools(self.tool_registry)
         self.agent_runtime = AgentRuntime(self.client, self.tool_registry)
+        self.task_scheduler = TaskScheduler(
+            self.tool_registry,
+            max_workers=3,
+            max_queued_plans=4,
+            event_callback=lambda event: self.audit_log.record_event("task_state", {
+                "plan_id": event.plan_id, "step_id": event.step_id,
+                "state": event.state.value, "timestamp": event.timestamp,
+                "duration_seconds": event.duration_seconds, "detail": event.detail,
+            }),
+        )
         self.audit_log.record_event("application_started", {"platform": sys.platform})
         self.environment_graph = EnvironmentStateGraph()
         self.desktop_tools_available = False
@@ -213,6 +224,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Local Desktop AI Agent", message)
 
     def closeEvent(self, event) -> None:
+        self.task_scheduler.shutdown(wait_for_tasks=False)
         self.audit_log.record_event("application_exiting")
         super().closeEvent(event)
 
