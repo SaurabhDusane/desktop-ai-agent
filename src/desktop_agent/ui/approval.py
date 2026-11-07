@@ -20,13 +20,10 @@ class ApprovalRequest:
 
 
 class ApprovalBroker(QObject):
-    """Synchronous policy callback that presents confirmations on the Qt UI thread.
-
-    Tool workers wait for the user's decision. A timeout or a closed application
-    fails closed; it never turns into an implicit approval.
-    """
+    """Synchronous policy callback that presents confirmations on the Qt UI thread."""
 
     requested = Signal(object)
+    approval_state = Signal(str, bool)
 
     def __init__(self, parent: QObject | None = None, timeout_seconds: float = 120.0) -> None:
         super().__init__(parent)
@@ -35,13 +32,17 @@ class ApprovalBroker(QObject):
 
     def approve(self, tool_name: str, reason: str, arguments: dict) -> bool:
         request = ApprovalRequest(tool_name, reason, arguments)
-        if QThread.currentThread() == self.thread():
-            self._present(request)
-        else:
-            self.requested.emit(request)
-        if not request.completed.wait(self.timeout_seconds):
-            return False
-        return request.approved
+        self.approval_state.emit(tool_name, True)
+        try:
+            if QThread.currentThread() == self.thread():
+                self._present(request)
+            else:
+                self.requested.emit(request)
+            if not request.completed.wait(self.timeout_seconds):
+                return False
+            return request.approved
+        finally:
+            self.approval_state.emit(tool_name, False)
 
     def _present(self, request: ApprovalRequest) -> None:
         try:
